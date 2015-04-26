@@ -1,9 +1,9 @@
 import re
 import logging
-module_logger = logging.getLogger('cnctoolbox.preprocessor')
+
 class Preprocessor:
     def __init__(self):
-        self.logger = logging.getLogger('cnctoolbox.preprocessor')
+        self.logger = logging.getLogger('gerbil.preprocessor')
         self.line = "; preprocessor_init"
         self._feed_override = False
         self._requested_feed = None
