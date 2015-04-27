@@ -26,7 +26,6 @@ class Gerbil:
         self.name = name
 
         self.cmode = None
-        self._last_cmode = None
         self.cmpos = (0, 0, 0)
         self.cwpos = (0, 0, 0)
         
@@ -48,6 +47,12 @@ class Gerbil:
         self._logger.propagate = False
                                               
         self._ifacepath = ifacepath
+        
+        self._gcode_parser_state_requested = False
+        
+        self._last_cmode = None
+        self._last_cmpos = (0, 0, 0)
+        self._last_cwpos = (0, 0, 0)
         
         self._rx_buffer_size = 128
         self._rx_buffer_fill = []
@@ -259,6 +264,8 @@ class Gerbil:
         """
         self._preprocessor.request_feed(float(requested_feed))
         
+    def request_gcode_parser_state(self):
+        self._gcode_parser_state_requested = True
         
     def set_incremental_streaming(self, a):
         """
@@ -280,7 +287,10 @@ class Gerbil:
         """
         Strings passed to this function will bypass buffer management and preprocessing and will be sent to Grbl (and executed) immediately. Use this function with caution: Only send when you are sure Grbl's receive buffer can handle the data volume and when it doesn't interfere with currently running streams. Only send single commands at a time. Applications: manual jogging, coordinate settings.
         """
-        self._iface.write(line.strip() + "\n")
+        line = self._preprocessor.tidy(line)
+        line = self._preprocessor.handle_feed(line)
+        self._iface.write(line + "\n")
+        self.request_gcode_parser_state()
         
         
     def send_with_queue(self, source):
@@ -387,7 +397,6 @@ class Gerbil:
     def set_current_line_number(self, linenr):
         if linenr < self._buffer_size:
             self._current_line_nr = linenr
-            print("XXX", self._current_line_nr)
             self.callback("on_line_number_change", self._current_line_nr)
     
     def set_target(self, targetstring):
@@ -623,21 +632,22 @@ class Gerbil:
         self.cmpos = (float(mpos_parts[0]), float(mpos_parts[1]), float(mpos_parts[2]))
         self.cwpos = (float(wpos_parts[0]), float(wpos_parts[1]), float(wpos_parts[2]))
         #self.callback("on_log", "=== STATE === %s %s %s", self.name, self.cmode, self.cmpos, self.cwpos)
-        self.callback("on_stateupdate", self.cmode, self.cmpos, self.cwpos)
         
-        if self.cmode != self._last_cmode:
-            # when mode has changed
-            if self.cmode == "Idle":
-                # when entering Idle mode, request Gcode parser state
-                self.send_immediately("$G")
+        if (self.cmode != self._last_cmode or
+            self.cmpos != self._last_cmpos or
+            self.cwpos != self._last_cwpos):
+            self.callback("on_stateupdate", self.cmode, self.cmpos, self.cwpos)
         
         self._last_cmode = self.cmode
+        self._last_cmpos = self.cmpos
+        self._last_cwpos = self.cwpos
         
         
     def _load_lines_into_buffer(self, string):
         """
         Send single lines or several lines. If sending several lines, lines must be \n terminated.
         """
+        print("_load_lines_into_buffer")
         self._gcodefilename = None
         
         lines = string.split("\n")
@@ -684,15 +694,23 @@ class Gerbil:
             
     def _poll_state(self):
         while self._poll_keep_alive == True:
-            self._get_state()
+            if self._gcode_parser_state_requested:
+                self._get_gcode_parser_state()
+                self._gcode_parser_state_requested = False
+            else:
+                self._get_state()
+                
             time.sleep(self.poll_interval)
             
         self.callback("on_log", "{}: Polling has been stopped".format(self.name))
         
         
     def _get_state(self):
-        if self.is_connected() == False: return
         self._iface.write("?")
+        
+        
+    def _get_gcode_parser_state(self):
+        self._iface.write("$G\n")
         
             
     def _set_streaming_src_end_reached(self, a):

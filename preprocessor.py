@@ -108,6 +108,7 @@ class Preprocessor:
    
    
     def _handle_feed(self):
+        
         match = re.match(self._re_feed, self.line)
         contains_feed = True if match else False
         
