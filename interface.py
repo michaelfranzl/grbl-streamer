@@ -45,8 +45,8 @@ class Interface:
         
     def write(self, data):
         if len(data) > 0:
-            if not "?" in data and not "$" in data:
-                self.logger.debug("%s:     -----------> %ibytes %s", self.name, len(data), data.strip())
+            if not "?" in data:
+                self.logger.debug("%s:   SENDING %ibytes %s", self.name, len(data), data.strip())
             num_written = self.serialport.write(bytes(data,"ascii"))
             return num_written
             #self.logger.log(100, "%s: num_written %s", self.name, num_written)

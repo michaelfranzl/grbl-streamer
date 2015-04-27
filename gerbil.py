@@ -4,6 +4,7 @@ import re
 import threading
 import atexit
 import os
+import collections
 
 from queue import Queue
 
@@ -35,6 +36,8 @@ class Gerbil:
         self.poll_interval = 1 # no less than 0.2 suggested by Grbl documentation
         self.poll_counter = 0
         
+        self.settings = {}
+        
         # ==================================================
         # 'private' -- do not interfere with these variables
         # ==================================================
@@ -47,6 +50,8 @@ class Gerbil:
         self._logger.propagate = False
                                               
         self._ifacepath = ifacepath
+        
+        self._last_setting_number = 132
         
         self._gcode_parser_state_requested = False
         
@@ -82,6 +87,10 @@ class Gerbil:
         self._buffer = []
         self._buffer_size = 0
         self._current_line_nr = 0
+        
+        self._buffer_stash = []
+        self._buffer_size_stash = 0
+        self._current_line_nr_stash = 0
 
         self.connected = False
         
@@ -233,23 +242,7 @@ class Gerbil:
             self.callback("on_log", "{}: Cannot start a polling thread. Another one is already running. This should not have happened.".format(self.name))
             
         self._thread_polling = None
-        
-        
-    def settings_from_file(self, filename):
-        # Needs testing
-        return
-        if self.cmode == "Idle":
-            self.callback("on_log", "{}: Stopping polling.".format(self.name))
-            self.poll_stop()
-            time.sleep(1)
-            self.callback("on_log", "{}: Writing settings.".format(self.name))
-            self.send("".join([x for x in open(filename).readlines()]))
-            time.sleep(1)
-            self.callback("on_log", "{}: Restarting polling.".format(self.name))
-            self.poll_start()
-        else:
-            self.callback("on_log", "{}: Grbl has to be idle to stream settings.".format(self.name))
-            
+
             
     def set_feed_override(self, val):
         """
@@ -280,7 +273,7 @@ class Gerbil:
         self._incremental_streaming = a
         if self._incremental_streaming == True:
             self._wait_empty_buffer = True
-        self.callback("on_log", "{}: Incremental streaming is {}".format(self.name, self._incremental_streaming))
+        self.callback("on_log", "{}: Incremental streaming set to {}".format(self.name, self._incremental_streaming))
         
         
     def send_immediately(self, line):
@@ -325,7 +318,7 @@ class Gerbil:
                 self._buffer.append(tidy_line)
                 self._buffer_size += 1
                 
-        self.callback("on_loaded", "string", self._buffer_size)
+        self.callback("on_bufsize_change", "string", self._buffer_size)
         
 
     def load_file(self, filename):
@@ -351,7 +344,7 @@ class Gerbil:
                 self._buffer.append(tidy_line)
                 self._buffer_size += 1
                 
-        self.callback("on_loaded", "file", self._buffer_size, self._gcodefilename)
+        self.callback("on_bufsize_change", "file", self._buffer_size, self._gcodefilename)
         
     
     def stream_start(self, linenr=None):
@@ -386,9 +379,10 @@ class Gerbil:
         self._current_line_nr = 0
         self.callback("on_line_number_change", self._current_line_nr)
         self._gcodefilename = None
-        self.callback("on_loaded", "string", 0)
+        self.callback("on_bufsize_change", "string", 0)
         self._set_streaming_complete(True)
-        self._set_job_finished(True)
+        #self._set_job_finished(True) # we don't want a callback here
+        self._job_finished = True
         self._set_streaming_src_end_reached(True)
         self._error = False
         self._current_line = "; cnctools_CLEANUP" # explicit magic string for debugging
@@ -404,6 +398,27 @@ class Gerbil:
         
     def get_buffer(self):
         return self._buffer
+    
+    def request_settings(self):
+        
+        self._iface.write("$$\n")
+        
+    def get_settings(self):
+        return self.settings
+    
+    def buffer_stash(self):
+        self._buffer_stash = list(self._buffer)
+        self._buffer_size_stash = self._buffer_size
+        self._current_line_nr_stash = self._current_line_nr
+        
+        self.stream_clear()
+        
+    def buffer_unstash(self):
+        self._buffer = list(self._buffer_stash)
+        self._buffer_size = self._buffer_size_stash
+        self.set_current_line_number(self._current_line_nr_stash)
+        self.callback("on_bufsize_change", "string", self._buffer_size)
+        
 
     # ====== 'private' methods ======
     
@@ -430,6 +445,8 @@ class Gerbil:
             self._set_next_line()
             if self._streaming_src_end_reached == False:
                 self._send_current_line()
+            else:
+                self._set_job_finished(True)
                 
         else:
             self._fill_rx_buffer_until_full()
@@ -458,7 +475,9 @@ class Gerbil:
 
         progress_percent = int(100 * self._current_line_nr / self._buffer_size)
         self.callback("on_progress_percent", progress_percent)
-
+        
+        #self.callback("on_log", "_set_next_line(): linenr={}, bufsize={}".format(self._current_line_nr, self._buffer_size))
+        
         if self._current_line_nr < self._buffer_size:
             # still something in _buffer, pop it
             line = self._buffer[self._current_line_nr].strip()
@@ -517,10 +536,13 @@ class Gerbil:
             self.current_line_number = self._rx_buffer_backlog_line_number.pop(0)
             self.callback("on_processed_command", self.current_line_number, processed_command)
             
+            
+        #self.callback("on_log", "{}: _rx_buffer_fill_pop {} {}".format(self.name, self._rx_buffer_fill, self._streaming_src_end_reached))
+        
         if self._streaming_src_end_reached == True and len(self._rx_buffer_fill) == 0:
             self._set_job_finished(True)
             self._set_streaming_complete(True)
-            self.callback("on_log", "{}: Job completed".format(self.name))
+            
     
     
     def _iface_write(self, data):
@@ -543,17 +565,13 @@ class Gerbil:
                     #self._logger.debug("%s <----- %s", self.name, line)
                     self._update_state(line)
                     
+                elif line == "ok":
+                    self._logger.debug("OK")
+                    self._handle_ok()
+                    
                 elif line[0] == "[":
                     #self._logger.debug("%s <----- %s", self.name, line)
                     self._update_gcode_parser_state(line)
-                    
-                elif "Grbl " in line:
-                    #self._logger.debug("%s <----- %s", self.name, line)
-                    self._on_bootup()
-                    
-                elif line == "ok":
-                    #self._logger.debug("OK")
-                    self._handle_ok()
                     
                 elif "ALARM" in line:
                     self.callback("on_alarm", line)
@@ -570,10 +588,27 @@ class Gerbil:
                         problem_line = -1
                         
                     self.callback("on_error", line, problem_command, problem_line)
+                    
+                elif "Grbl " in line:
+                    #self._logger.debug("%s <----- %s", self.name, line)
+                    self._on_bootup()
                         
                 else:
-                    self._logger.debug("%s <----- %s", self.name, line)
+                    m = re.match("\$(.*)=(.*) \((.*)\)", line)
                     self.callback("on_read", line)
+                    if m:
+                        key = int(m.group(1))
+                        val = m.group(2)
+                        comment = m.group(3)
+                        self.settings[key] = {
+                            "val" : val,
+                            "cmt" : comment
+                            }
+                        if key == self._last_setting_number:
+                            self.callback("on_settings_downloaded")
+                            
+                    else:
+                        self.callback("on_read", line)
                 
                 
     def _handle_ok(self):
@@ -647,7 +682,6 @@ class Gerbil:
         """
         Send single lines or several lines. If sending several lines, lines must be \n terminated.
         """
-        print("_load_lines_into_buffer")
         self._gcodefilename = None
         
         lines = string.split("\n")
@@ -658,7 +692,7 @@ class Gerbil:
                 self._buffer.append(self._preprocess(line))
                 self._buffer_size += 1
                 
-        self.callback("on_loaded", "string", self._buffer_size)
+        self.callback("on_bufsize_change", "string", self._buffer_size)
         
         
     def is_connected(self):
@@ -715,7 +749,7 @@ class Gerbil:
             
     def _set_streaming_src_end_reached(self, a):
         self._streaming_src_end_reached = a
-        #self.callback("on_log", "{}: Streaming source end reached: {}".format(self.name, a))
+        self.callback("on_log", "{}: Streaming source end reached: {}".format(self.name, a))
 
 
     # The buffer has been fully written to Grbl, but Grbl is still processing the last commands.
@@ -727,7 +761,8 @@ class Gerbil:
     # Grbl has finished processing everything
     def _set_job_finished(self, a):
         self._job_finished = a
-        #self.callback("on_log", "{}: Job finished: {}".format(self.name, a))
+        if a == True:
+            self.callback("on_job_completed")
         
 
     def _default_callback(self, status, *args):

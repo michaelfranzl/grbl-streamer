@@ -108,10 +108,8 @@ class Preprocessor:
    
    
     def _handle_feed(self):
-        
         match = re.match(self._re_feed, self.line)
         contains_feed = True if match else False
-        
         
         if self._feed_override == False and contains_feed:
             # Simiply update the UI for detected feed
