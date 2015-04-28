@@ -129,7 +129,7 @@ class Gerbil:
         if path:
             self._ifacepath = path
             
-        self._cleanup()
+        self._onboot_init()
         
         if self._iface == None:
             self.callback("on_log", "{}: Setting up interface on {}".format(self.name, self._ifacepath))
@@ -162,7 +162,7 @@ class Gerbil:
         
         self.connected = False
         
-        self._cleanup()
+        self._onboot_init()
         
         self.callback("on_disconnected")
         
@@ -173,7 +173,7 @@ class Gerbil:
         """
         if self.is_connected() == False: return
         self.softreset()
-        self._cleanup()
+        self._onboot_init()
         
         
     def hold(self):
@@ -197,7 +197,7 @@ class Gerbil:
         An alias for sending $X, but also performs a cleanup of data
         """
         self._iface_write("$X\n")
-        #self._cleanup()
+        #self._onboot_init()
         
         
     def softreset(self):
@@ -291,24 +291,13 @@ class Gerbil:
         Strings passed to this function will be sent to Grbl (and executed) but WITH buffer management. If there is a currently running stream, data will be appended to the buffer, else the buffer will be reset and will only contain the data.
         """
         self._gcodefilename = None
-        
-        #if self._job_finished == True:
-            #del self._buffer[:]
-            #self._buffer_size = 0
-            #self._current_line_nr = 0
-            
         self._load_lines_into_buffer(source)
-        self.stream_start()
-        #self._set_streaming_src_end_reached(False)
-        #self._set_streaming_complete(False)
-        
-        #self._stream() 
-        #self._set_job_finished(False)
+        self.job_run()
         
         
     def write(self, string):
         """
-        The Compiler class requires a method "write" to be present. This just appends lines to _buffer. `stream_start()` must be called separately.
+        The Compiler class requires a method "write" to be present. This just appends lines to _buffer. `job_run()` must be called separately.
         """
         self._gcodefilename = None
         lines = string.split("\n")
@@ -329,14 +318,9 @@ class Gerbil:
             self.callback("on_log", "{}: Job must be finished before you can load a file".format(self.name))
             return
         
-        self.stream_clear()
+        self.job_new()
         
         self._gcodefilename = filename # remember filename
-        
-        #del self._buffer[:]
-        #self._buffer_size = 0
-        #self._current_line_nr = 0
-        
         
         with open(filename) as f:
             for line in f:
@@ -347,7 +331,7 @@ class Gerbil:
         self.callback("on_bufsize_change", "file", self._buffer_size, self._gcodefilename)
         
     
-    def stream_start(self, linenr=None):
+    def job_run(self, linenr=None):
         """
         Start stream from specific line
         """
@@ -365,15 +349,12 @@ class Gerbil:
         self._set_job_finished(False)
         self._stream() 
         
-            
-        
-        
-        
-    def stream_stop(self):
+
+    def job_halt(self):
         self._streaming_enabled = False
         
 
-    def stream_clear(self):
+    def job_new(self):
         del self._buffer[:]
         self._buffer_size = 0
         self._current_line_nr = 0
@@ -400,7 +381,6 @@ class Gerbil:
         return self._buffer
     
     def request_settings(self):
-        
         self._iface.write("$$\n")
         
     def get_settings(self):
@@ -411,7 +391,7 @@ class Gerbil:
         self._buffer_size_stash = self._buffer_size
         self._current_line_nr_stash = self._current_line_nr
         
-        self.stream_clear()
+        self.job_new()
         
     def buffer_unstash(self):
         self._buffer = list(self._buffer_stash)
@@ -421,12 +401,6 @@ class Gerbil:
         
 
     # ====== 'private' methods ======
-    
-    #def _log(self, level, string):
-        #if self._logging_method == "callback" and level >= self._logging_level:
-            #self.callback("on_log", "{}: {}".format(self.name, string))
-        #else:
-            #self._logger.log(level, sring)
         
     def _stream(self):
         """
@@ -438,7 +412,7 @@ class Gerbil:
             return
         
         if self._streaming_enabled == False:
-            self._logger.debug("_stream(): Streaming has been stopped. Call `stream_start()` to resume.")
+            self._logger.debug("_stream(): Streaming has been stopped. Call `job_run()` to resume.")
             return
         
         if self._incremental_streaming:
@@ -626,7 +600,7 @@ class Gerbil:
                 
                             
     def _on_bootup(self):
-        self._cleanup()
+        self._onboot_init()
         self.connected = True
         self.callback("on_log", "{}: Booted!".format(self.name))
         self.callback("on_boot")
@@ -701,7 +675,7 @@ class Gerbil:
         return self.connected
     
     
-    def _cleanup(self):
+    def _onboot_init(self):
         """
         called after boot. Should mimic Grbl's initial state after boot.
         """
@@ -712,10 +686,10 @@ class Gerbil:
         self._set_job_finished(True)
         self._set_streaming_src_end_reached(True)
         self._error = False
-        self._current_line = "; cnctools_CLEANUP" # explicit magic string for debugging
+        self._current_line = "; cnctools_ONBOOT_INIT" # explicit magic string for debugging
         self._current_line_sent = True
         self._clear_queue()
-        self._preprocessor.cleanup()
+        self._preprocessor.onboot_init()
         
         
     def _clear_queue(self):

@@ -21,7 +21,7 @@ class Preprocessor:
         self.logger.info("Preprocessor Class Initialized")
         
         
-    def cleanup(self):
+    def onboot_init(self):
         """
         Called after Grbls has booted. Mimics Grbl's state machine. After boot, Grbl's feed is not set.
         """
@@ -90,7 +90,7 @@ class Preprocessor:
             key = int(match.group(1))
             val = float(match.group(2))
             self._vars[key] = val
-            self.callback("on_log", "SET VAR #{}={}".format(key, val))
+            self.callback("on_var_set", key, val)
             #self.line = "; cnctools_var_set {}".format(self.line)
             self.line = ""
             return
