@@ -65,7 +65,6 @@ class Gerbil:
         self._rx_buffer_backlog_line_number = []
         self._rx_buffer_fill_percent = 0
         
-        self._gcodefilename = None
         self._gcodefilesize = 999999999
         
         self._current_line = "; cnctools_INIT" # explicit init string for debugging
@@ -107,7 +106,8 @@ class Gerbil:
         
         self.callback = self._default_callback
         
-        self._preprocessor = Preprocessor()
+        self.preprocessor = Preprocessor()
+        self.preprocessor.callback = self._preprocessor_callback
         
         atexit.register(self.disconnect)
         
@@ -116,7 +116,7 @@ class Gerbil:
     
     def set_callback(self, cb):
         self.callback = cb
-        self._preprocessor.callback = cb
+        
         self._loghandler.callback = cb
       
     def cnect(self,path=False):
@@ -248,14 +248,14 @@ class Gerbil:
         """
         Pass True or False as argument to enable or disable feed override. If you pass True, all F gcode-commands will be stripped out from the stream. In addition, no feed override takes place until you also have set the requested feed via the method `set_feed()`.
         """
-        self._preprocessor.set_feed_override(val)
+        self.preprocessor.set_feed_override(val)
         
         
     def request_feed(self, requested_feed):
         """
         Override the feed speed (in mm/min). Effecive only when you set `set_feed_override(True)`. An 'overriding' F gcode command will be inserted into the stream only when the currently requested feed differs from the last requested feed.
         """
-        self._preprocessor.request_feed(float(requested_feed))
+        self.preprocessor.request_feed(float(requested_feed))
         
     def request_gcode_parser_state(self):
         self._gcode_parser_state_requested = True
@@ -280,34 +280,25 @@ class Gerbil:
         """
         Strings passed to this function will bypass buffer management and preprocessing and will be sent to Grbl (and executed) immediately. Use this function with caution: Only send when you are sure Grbl's receive buffer can handle the data volume and when it doesn't interfere with currently running streams. Only send single commands at a time. Applications: manual jogging, coordinate settings.
         """
-        line = self._preprocessor.tidy(line)
-        line = self._preprocessor.handle_feed(line)
+        line = self.preprocessor.tidy(line)
+        line = self.preprocessor.handle_feed(line)
         self._iface.write(line + "\n")
-        self.request_gcode_parser_state()
+        self.request_gcode_parser_state() # TODO: offload to main app
         
         
-    def send_with_queue(self, source):
+    def send_with_queue(self, lines):
         """
         Strings passed to this function will be sent to Grbl (and executed) but WITH buffer management. If there is a currently running stream, data will be appended to the buffer, else the buffer will be reset and will only contain the data.
         """
-        self._gcodefilename = None
-        self._load_lines_into_buffer(source)
+        self._load_lines_into_buffer(lines)
         self.job_run()
         
         
-    def write(self, string):
+    def write(self, lines):
         """
         The Compiler class requires a method "write" to be present. This just appends lines to _buffer. `job_run()` must be called separately.
         """
-        self._gcodefilename = None
-        lines = string.split("\n")
-        for line in lines:
-            tidy_line = self._preprocessor.tidy(line)
-            if tidy_line != "":
-                self._buffer.append(tidy_line)
-                self._buffer_size += 1
-                
-        self.callback("on_bufsize_change", "string", self._buffer_size)
+        self._load_lines_into_buffer(lines)
         
 
     def load_file(self, filename):
@@ -320,15 +311,8 @@ class Gerbil:
         
         self.job_new()
         
-        self._gcodefilename = filename # remember filename
-        
         with open(filename) as f:
-            for line in f:
-                tidy_line = self._preprocessor.tidy(line)
-                self._buffer.append(tidy_line)
-                self._buffer_size += 1
-                
-        self.callback("on_bufsize_change", "file", self._buffer_size, self._gcodefilename)
+            self._load_lines_into_buffer(f.read())
         
     
     def job_run(self, linenr=None):
@@ -359,7 +343,6 @@ class Gerbil:
         self._buffer_size = 0
         self._current_line_nr = 0
         self.callback("on_line_number_change", self._current_line_nr)
-        self._gcodefilename = None
         self.callback("on_bufsize_change", "string", 0)
         self._set_streaming_complete(True)
         #self._set_job_finished(True) # we don't want a callback here
@@ -368,6 +351,7 @@ class Gerbil:
         self._error = False
         self._current_line = "; cnctools_CLEANUP" # explicit magic string for debugging
         self._current_line_sent = True
+        self.preprocessor.job_new()
     
     def set_current_line_number(self, linenr):
         if linenr < self._buffer_size:
@@ -401,6 +385,17 @@ class Gerbil:
         
 
     # ====== 'private' methods ======
+    
+    def _preprocessor_callback(self, event, *data):
+        
+        if event == "on_preprocessor_var_undefined":
+            self.callback("on_log", "HALTED BECAUSE UNDEFINED VAR {}".format(data[0]))
+            self._set_streaming_src_end_reached(True)
+            self.job_halt()
+        
+        else:
+            # pass on to UI
+            self.callback(event, *data)
         
     def _stream(self):
         """
@@ -408,11 +403,11 @@ class Gerbil:
         its buffer is full.
         """
         if self._streaming_src_end_reached:
-            self._logger.debug("_stream(): Nothing more in _buffer.")
+            #self._logger.debug("_stream(): Streming source end reached")
             return
         
         if self._streaming_enabled == False:
-            self._logger.debug("_stream(): Streaming has been stopped. Call `job_run()` to resume.")
+            #self._logger.debug("_stream(): Streaming has been stopped. Call `job_run()` to resume.")
             return
         
         if self._incremental_streaming:
@@ -444,19 +439,17 @@ class Gerbil:
                 
     def _set_next_line(self):
         """
-        Gets next line from file or _buffer, and sets _current_gcodeblock
+        Gets next line from file or _buffer, and sets _current_line
         """
-
         progress_percent = int(100 * self._current_line_nr / self._buffer_size)
         self.callback("on_progress_percent", progress_percent)
-        
-        #self.callback("on_log", "_set_next_line(): linenr={}, bufsize={}".format(self._current_line_nr, self._buffer_size))
         
         if self._current_line_nr < self._buffer_size:
             # still something in _buffer, pop it
             line = self._buffer[self._current_line_nr].strip()
-            preprocessed_line = self._preprocess(line)
-            self._current_line = preprocessed_line
+            line = self.preprocessor.handle_feed(line)
+            line = self.preprocessor.substitute_vars(line)
+            self._current_line = line
             self._current_line_sent = False
             self._current_line_nr += 1
                 
@@ -485,19 +478,6 @@ class Gerbil:
         rx_free_bytes = self._rx_buffer_size - sum(self._rx_buffer_fill)
         required_bytes = len(self._current_line) + 1 # +1 because \n
         return rx_free_bytes >= required_bytes
-    
-    
-    
-    def _preprocess(self, line):
-        contains_setting = re.match("\$[^CXHG$#]", line)
-        if contains_setting and self._incremental_streaming == False:
-            self.callback("on_log", "{}: I encountered a settings command '{}' in the gcode stream but the current streaming mode is not set to incremental. Grbl cannot handle that. I will not send the $ command.".format(self.name, line))
-            line = "; setting stripped"
-            
-        # gcode feed processing
-        line = self._preprocessor.handle_feed(line)
-
-        return line
     
         
     def _rx_buffer_fill_pop(self):
@@ -536,15 +516,13 @@ class Gerbil:
             
             if len(line) > 0:
                 if line[0] == "<":
-                    #self._logger.debug("%s <----- %s", self.name, line)
                     self._update_state(line)
                     
                 elif line == "ok":
-                    self._logger.debug("OK")
+                    #self._logger.debug("OK")
                     self._handle_ok()
                     
                 elif line[0] == "[":
-                    #self._logger.debug("%s <----- %s", self.name, line)
                     self._update_gcode_parser_state(line)
                     
                 elif "ALARM" in line:
@@ -564,7 +542,6 @@ class Gerbil:
                     self.callback("on_error", line, problem_command, problem_line)
                     
                 elif "Grbl " in line:
-                    #self._logger.debug("%s <----- %s", self.name, line)
                     self._on_bootup()
                         
                 else:
@@ -652,21 +629,20 @@ class Gerbil:
         self._last_cwpos = self.cwpos
         
         
-    def _load_lines_into_buffer(self, string):
-        """
-        Send single lines or several lines. If sending several lines, lines must be \n terminated.
-        """
-        self._gcodefilename = None
+    def _load_line_into_buffer(self, line):
+        line = self.preprocessor.tidy(line)
+        if line != "":
+            self.preprocessor.find_vars(line)
+            self._buffer.append(line)
+            self._buffer_size += 1
         
+        
+    def _load_lines_into_buffer(self, string):
         lines = string.split("\n")
         for line in lines:
-            tidy_line = self._preprocessor.tidy(line)
-            if tidy_line != "":
-                # ignore all empty lines
-                self._buffer.append(self._preprocess(line))
-                self._buffer_size += 1
-                
+            self._load_line_into_buffer(line)
         self.callback("on_bufsize_change", "string", self._buffer_size)
+        self.callback("on_vars_change", self.preprocessor.vars)
         
         
     def is_connected(self):
@@ -689,7 +665,9 @@ class Gerbil:
         self._current_line = "; cnctools_ONBOOT_INIT" # explicit magic string for debugging
         self._current_line_sent = True
         self._clear_queue()
-        self._preprocessor.onboot_init()
+        self.preprocessor.onboot_init()
+        self.callback("on_progress_percent", 0)
+        self.callback("on_rx_buffer_percentage", 0)
         
         
     def _clear_queue(self):
