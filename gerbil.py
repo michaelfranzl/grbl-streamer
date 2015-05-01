@@ -37,6 +37,7 @@ class Gerbil:
         self.poll_counter = 0
         
         self.settings = {}
+        self.settings_hash = {}
         
         # ==================================================
         # 'private' -- do not interfere with these variables
@@ -522,8 +523,14 @@ class Gerbil:
                     #self._logger.debug("OK")
                     self._handle_ok()
                     
-                elif line[0] == "[":
+                elif re.match("^\[G[0123].*", line):
                     self._update_gcode_parser_state(line)
+                    
+                elif re.match("^\[[GTP][59LR].*", line):
+                    self._update_hash_state(line)
+                    if "PRB" in line:
+                        # last line
+                        self.callback("on_hash_stateupdate")
                     
                 elif "ALARM" in line:
                     self.callback("on_alarm", line)
@@ -582,6 +589,20 @@ class Gerbil:
         self.callback("on_log", "{}: Booted!".format(self.name))
         self.callback("on_boot")
         #self.poll_start()
+        
+        
+    def _update_hash_state(self, line):
+        line = line.replace("]", "").replace("[", "")
+        parts = line.split(":")
+        
+        key = parts[0]
+        tpl_str = parts[1].split(",")
+        
+        tpl = tuple([float(x) for x in tpl_str])
+        self.settings_hash[key] = tpl
+        
+        
+        
             
     def _update_gcode_parser_state(self, line):
         """
