@@ -91,6 +91,8 @@ class Gerbil:
         self._buffer_stash = []
         self._buffer_size_stash = 0
         self._current_line_nr_stash = 0
+        
+        self._target = "firmware"
 
         self.connected = False
         
@@ -324,15 +326,15 @@ class Gerbil:
             self.callback("on_log", "{}: Nothing in the buffer!".format(self.name))
             return
         
-        self._set_streaming_src_end_reached(False)
-        self._set_streaming_complete(False)
-        
         if linenr:
             self.set_current_line_number(linenr)
-            
+
+       
+        self._set_streaming_src_end_reached(False)
+        self._set_streaming_complete(False)
         self._streaming_enabled = True
         self._set_job_finished(False)
-        self._stream() 
+        self._stream()
         
 
     def job_halt(self):
@@ -361,6 +363,7 @@ class Gerbil:
     
     def set_target(self, targetstring):
         self._target = targetstring
+        self.callback("on_log", "Current target is {}".format(self._target))
         
     def get_buffer(self):
         return self._buffer
@@ -400,8 +403,7 @@ class Gerbil:
         
     def _stream(self):
         """
-        Take commands from _buffer and send them to Grbl, either one-by-one, or until
-        its buffer is full.
+        Take commands from _buffer and send them to Grbl, either one-by-one, or until its buffer is full.
         """
         if self._streaming_src_end_reached:
             #self._logger.debug("_stream(): Streming source end reached")
@@ -411,15 +413,25 @@ class Gerbil:
             #self._logger.debug("_stream(): Streaming has been stopped. Call `job_run()` to resume.")
             return
         
-        if self._incremental_streaming:
-            self._set_next_line()
-            if self._streaming_src_end_reached == False:
-                self._send_current_line()
+        if self._target == "firmware":
+            if self._incremental_streaming:
+                self._set_next_line()
+                if self._streaming_src_end_reached == False:
+                    self._send_current_line()
+                else:
+                    self._set_job_finished(True)
+                    
             else:
-                self._set_job_finished(True)
+                self._fill_rx_buffer_until_full()
                 
-        else:
-            self._fill_rx_buffer_until_full()
+        elif self._target == "simulator":
+            buf = []
+            while self._streaming_src_end_reached == False:
+                self._set_next_line()
+                buf.append(self._current_line)
+            
+            self._set_job_finished(True)
+            self.callback("on_simulation_finished", buf)
 
         
         
@@ -706,7 +718,7 @@ class Gerbil:
                 self._gcode_parser_state_requested = False
             else:
                 self._get_state()
-                
+
             time.sleep(self.poll_interval)
             
         self.callback("on_log", "{}: Polling has been stopped".format(self.name))
