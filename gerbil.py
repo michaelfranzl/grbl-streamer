@@ -502,8 +502,8 @@ class Gerbil:
         if len(self._rx_buffer_fill) > 0:
             self._rx_buffer_fill.pop(0)
             processed_command = self._rx_buffer_backlog.pop(0)
-            self.current_line_number = self._rx_buffer_backlog_line_number.pop(0)
-            self.callback("on_processed_command", self.current_line_number, processed_command)
+            ln = self._rx_buffer_backlog_line_number.pop(0)
+            self.callback("on_processed_command", ln, processed_command)
             
             
         #self.callback("on_log", "{}: _rx_buffer_fill_pop {} {}".format(self.name, self._rx_buffer_fill, self._streaming_src_end_reached))
