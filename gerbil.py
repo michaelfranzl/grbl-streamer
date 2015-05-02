@@ -73,7 +73,7 @@ class Gerbil:
 
         # state variables
         self._streaming_mode = None
-        self._incremental_streaming = False
+        self.incremental_streaming = False
         
         self._wait_empty_buffer = False
         
@@ -273,10 +273,10 @@ class Gerbil:
         
         You can change the streaming method even during streaming.
         """
-        self._incremental_streaming = a
-        if self._incremental_streaming == True:
+        self.incremental_streaming = a
+        if self.incremental_streaming == True:
             self._wait_empty_buffer = True
-        self.callback("on_log", "{}: Incremental streaming set to {}".format(self.name, self._incremental_streaming))
+        self.callback("on_log", "{}: Incremental streaming set to {}".format(self.name, self.incremental_streaming))
         
         
     def send_immediately(self, line):
@@ -414,7 +414,7 @@ class Gerbil:
             return
         
         if self._target == "firmware":
-            if self._incremental_streaming:
+            if self.incremental_streaming:
                 self._set_next_line()
                 if self._streaming_src_end_reached == False:
                     self._send_current_line()
@@ -482,6 +482,7 @@ class Gerbil:
         self._rx_buffer_backlog_line_number.append(self._current_line_nr)
         self._iface_write(self._current_line + "\n")
         self._current_line_sent = True
+        
     
     
     def _rx_buf_can_receive_current_line(self):
@@ -674,6 +675,7 @@ class Gerbil:
         lines = string.split("\n")
         for line in lines:
             self._load_line_into_buffer(line)
+        print("XXX", self._buffer_size, self._buffer, string)
         self.callback("on_bufsize_change", "string", self._buffer_size)
         self.callback("on_vars_change", self.preprocessor.vars)
         

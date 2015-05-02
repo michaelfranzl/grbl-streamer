@@ -90,9 +90,10 @@ class Preprocessor:
         """
         This silently strips gcode unsupported by Grbl, but ONLY those commands that are safe to strip without making the program deviate from its original purpose. For example it is  safe to strip a tool change. All other encountered unsupported commands should be sent to Grbl nevertheless so that an error is raised. The user then can make an informed decision.
         """
-        if ("T" in self.line or
-            "M6" in self.line or
-            "=" in self.line):
+        if ("T" in self.line or # tool change
+            "M6" in self.line or # tool change
+            re.match("#\d=.*", self.line) # var assignment
+            ): 
             self.line = ""
         
         
