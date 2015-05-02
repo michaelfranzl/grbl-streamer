@@ -482,6 +482,7 @@ class Gerbil:
         self._rx_buffer_backlog_line_number.append(self._current_line_nr)
         self._iface_write(self._current_line + "\n")
         self._current_line_sent = True
+        self.callback("on_line_sent", self._current_line_nr, self._current_line)
         
     
     
