@@ -54,7 +54,8 @@ class Gerbil:
         
         self._last_setting_number = 132
         
-        self._gcode_parser_state_requested = False
+        self.gcode_parser_state_requested = False
+        self.hash_state_requested = False
         
         self._last_cmode = None
         self._last_cmpos = (0, 0, 0)
@@ -259,9 +260,7 @@ class Gerbil:
         Override the feed speed (in mm/min). Effecive only when you set `set_feed_override(True)`. An 'overriding' F gcode command will be inserted into the stream only when the currently requested feed differs from the last requested feed.
         """
         self.preprocessor.request_feed(float(requested_feed))
-        
-    def request_gcode_parser_state(self):
-        self._gcode_parser_state_requested = True
+
         
     def set_incremental_streaming(self, a):
         """
@@ -286,7 +285,8 @@ class Gerbil:
         line = self.preprocessor.tidy(line)
         line = self.preprocessor.handle_feed(line)
         self._iface.write(line + "\n")
-        self.request_gcode_parser_state() # TODO: offload to main app
+        self.gcode_parser_state_requested = True # TODO: offload to main app
+        self.hash_state_requested = True
         
         
     def send_with_queue(self, lines):
@@ -675,7 +675,7 @@ class Gerbil:
         lines = string.split("\n")
         for line in lines:
             self._load_line_into_buffer(line)
-        print("XXX", self._buffer_size, self._buffer, string)
+        
         self.callback("on_bufsize_change", "string", self._buffer_size)
         self.callback("on_vars_change", self.preprocessor.vars)
         
@@ -714,10 +714,13 @@ class Gerbil:
             
             
     def _poll_state(self):
-        while self._poll_keep_alive == True:
-            if self._gcode_parser_state_requested:
-                self._get_gcode_parser_state()
-                self._gcode_parser_state_requested = False
+        while self._poll_keep_alive:
+            if self.gcode_parser_state_requested:
+                self.get_gcode_parser_state()
+                self.gcode_parser_state_requested = False
+            elif self.hash_state_requested:
+                self.get_hash_state()
+                self.hash_state_requested = False
             else:
                 self._get_state()
 
@@ -730,8 +733,11 @@ class Gerbil:
         self._iface.write("?")
         
         
-    def _get_gcode_parser_state(self):
+    def get_gcode_parser_state(self):
         self._iface.write("$G\n")
+        
+    def get_hash_state(self):
+        self._iface.write("$#\n")
         
             
     def _set_streaming_src_end_reached(self, a):
