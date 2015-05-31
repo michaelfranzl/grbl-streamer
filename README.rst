@@ -27,32 +27,34 @@ We believe that the code is well documented. This module is for developers, not 
 
 ## Usage example
 
-from gerbil import Gerbil
+Try this simple example::
 
-def my_callback(eventstring, *data):
-    args = []
-    for d in data:
-        args.append(str(d))
-    print("MY CALLBACK: event={} data={}".format(eventstring.ljust(30), ", ".join(args)))
-    # Now, do something interesting with these callbacks
+    from gerbil import Gerbil
 
-grbl = Gerbil()
-grbl.setup_logging()
-grbl.callback = my_callback
-grbl.cnect()
-grbl.poll_start()
+    def my_callback(eventstring, *data):
+        args = []
+        for d in data:
+            args.append(str(d))
+        print("MY CALLBACK: event={} data={}".format(eventstring.ljust(30), ", ".join(args)))
+        # Now, do something interesting with these callbacks
 
-grbl.send_immediately("G0 X200")
+    grbl = Gerbil()
+    grbl.setup_logging()
+    grbl.callback = my_callback
+    grbl.cnect()
+    grbl.poll_start()
 
-grbl.hash_state_requested = True
-grbl.gcode_parser_state_requested = True
+    grbl.send_immediately("G0 X200")
 
-grbl.request_settings()
+    grbl.hash_state_requested = True
+    
+    grbl.gcode_parser_state_requested = True
 
-grbl.send_with_queue("G0 X10 \n G0 X0 \n G0 Y10 \n G0 Y0 \n")
+    grbl.request_settings()
 
+    grbl.send_with_queue("G0 X10 \n G0 X0 \n G0 Y10 \n G0 Y0 \n")
 
-grbl.disconnect()
+    grbl.disconnect()
 
 
 # License
