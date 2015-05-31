@@ -549,12 +549,7 @@ class Gerbil:
         
     def stream(self, lines):
         """
-        G-Code command strings passed to this function will be appended
-        to the current queue buffer. The queue then will start streaming
-        from the current buffer position (`current_line_number`).
-        
-        You can call this method repeatedly, e.g. for submitting chunks
-        of G-Code, even while a job is running.
+        A more convenient alias for `write(lines)` and `job_run()`
         
         @param lines
         A string of G-Code commands. Each command is \n separated.

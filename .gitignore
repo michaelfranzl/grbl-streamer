@@ -24,3 +24,9 @@ log
 *.user
 cnctoolbox.log
 compiler.log
+
+html
+latex
+*.db
+
+__pycache__

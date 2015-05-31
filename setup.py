@@ -14,25 +14,25 @@ from os import path
 here = path.abspath(path.dirname(__file__))
 
 # Get the long description from the relevant file
-with open(path.join(here, 'DESCRIPTION.rst'), encoding='utf-8') as f:
+with open(path.join(here, 'README.rst'), encoding='utf-8') as f:
     long_description = f.read()
 
 setup(
-    name='sample',
+    name='gerbil',
 
     # Versions should comply with PEP440.  For a discussion on single-sourcing
     # the version across setup.py and the project code, see
     # https://packaging.python.org/en/latest/single_source_version.html
     version='0.5.0',
 
-    description='A lean, clean, fast, reliable, reusable asynchronous, event-based interface module for the GRBL CNC firmware',
+    description='Universal Grbl CNC firmware interface module for Python3 providing a convenient high-level API for scripting or integration into parent applications like GUIs.',
     long_description=long_description,
 
     # The project's main homepage.
     url='https://github.com/michaelfranzl/gerbil',
 
     # Author details
-    author='Michael Franzl and Jason Martin',
+    author='Michael Franzl',
     author_email='office@thebigrede.net',
 
     # Choose your license
@@ -59,7 +59,7 @@ setup(
     ],
 
     # What does your project relate to?
-    keywords='CNC streaming firmware serial events',
+    keywords='CNC streaming firmware',
 
     # You can just specify the packages manually here if your project is
     # simple. Or you can use find_packages().
