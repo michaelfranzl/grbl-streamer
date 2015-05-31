@@ -55,7 +55,9 @@ Try this simple example in a Python3 console::
 
     grbl.request_settings()
 
-    grbl.send_with_queue("G0 X10 \n G0 X0 \n G0 Y10 \n G0 Y0 \n")
+    grbl.set_feed_override(True)
+    grbl.request_feed(800)
+    grbl.stream("F100 G1 X10 \n G1 X0 \n G1 Y10 \n G1 Y0 \n")
 
     grbl.disconnect()
 

@@ -547,14 +547,11 @@ class Gerbil:
         self._iface.write(line + "\n")
         
         
-    def send_with_queue(self, lines):
+    def stream(self, lines):
         """
         G-Code command strings passed to this function will be appended
         to the current queue buffer. The queue then will start streaming
         from the current buffer position (`current_line_number`).
-        
-        This method is useful for streaming more than two G-Code
-        commands or $ settings.
         
         You can call this method repeatedly, e.g. for submitting chunks
         of G-Code, even while a job is running.
