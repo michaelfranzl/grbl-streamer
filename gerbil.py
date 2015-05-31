@@ -1,3 +1,12 @@
+""" Python module "Gerbil" (c) 2015 Red (E) Tools Ltd.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+"""
+
 import logging
 import time
 import re
@@ -11,51 +20,226 @@ from queue import Queue
 from interface import Interface
 from preprocessor import Preprocessor
 from callbackloghandler import CallbackLogHandler
-from logger import Logger
 
 class Gerbil:
-    """One instance of this class manages one physically connected Grbl firmware."""
-    def __init__(self, name="mygrbl", ifacepath="/dev/ttyACM0"):
-        """
-        Set up initial values of all properties.
-        
-        blah
-        """
-        
+    """ A universal Grbl CNC firmware interface module for Python3
+    providing a convenient high-level API for scripting or integration
+    into parent applications like GUI's.
+    
+    There are a number of streaming applications available for the Grbl
+    CNC controller, but none of them seem to be an universal, re-usable
+    standard Python module. Gerbil attempts to fill that gap.
+    
+    See README for usage examples.
+    
+    Gerbil is a name of a cute desert rodent. We chose the name due to
+    its similarity to the name "Grbl".
+    
+    Features:
+    
+    * Re-usable across projects
+    * Non-blocking
+    * Asynchronous (event-based) callbacks for the parent application
+    * Two streaming modes: Incremental or fast ("counting characters")
+    * Defined shutdown
+    * G-Code cleanup
+    * G-Code variable expansion
+    * Dynamic feed override
+    * Buffer stashing
+    * Job halt and resume
+    
+    Callbacks:
+    
+    After assigning your own callback function (callback = ...) you will receive the following signals:
+    
+    on_boot
+    : Emitted whenever Grbl boots (e.g. after a soft reset).
+    : No arguments.
+    
+    on_disconnected
+    : Emitted whenever the serial port has been closed.
+    : No arguments
+    
+    on_log
+    : Emitted for informal logging or debugging messages.
+    : 1 argument: message_string
+    
+    on_line_sent
+    : Emitted whenever a line is actually sent to Grbl.
+    : 2 arguments: job_line_number, line
+    
+    on_bufsize_change
+    : Emitted whenever lines have been appended to the buffer
+    : 1 argument: linecount
+    
+    on_line_number_change
+    : Emitted whenever the current buffer position has been changed
+    : 1 argument: line_number
+    
+    on_processed_command
+    : Emitted whenever Grbl confirms a command with "ok" and is now being executed physically
+    : 2 arguments: processed line number, processed line
+    
+    on_alarm
+    : Emitted whenever Grbl sends an "ALARM" line
+    : 1 argument: the full line Grbl sent
+    
+    on_error
+    : Emitted whenever Grbl sends an "ERROR" line
+    : 3 arguments: the full line Grbl sent, the line that caused the error, the line number in the buffer that caused the error
 
-        # 'public' - it is safe to set these variables from outside
+    on_rx_buffer_percent
+    : Reports Grbl's serial receive buffer fill in percent. Emitted frequently while streaming.
+    : 1 argument: percentage integer from 0 to 100
+    
+    on_progress_percent
+    : Reports the completion of the current job/buffer in percent. Emitted frequently while streaming.
+    : 1 argument: percentage integer from 0 to 100
+    
+    on_job_completed
+    : Emitted when the current job/buffer has been streamed and physically executed entirely
+    
+    on_stateupdate
+    : Emitted whenever Grbl's state has changed
+    : 3 arguments: Grbl's mode ('Idle', 'Run' etc.), machine position tuple, working position tupe
+    
+    on_hash_stateupdate
+    : Emitted after Grbl's 'hash' EEPROM settings (`$#`) have been received
+    : 1 argument: dict of the settings
+    
+    on_settings_downloaded
+    : Emitted after Grbl's EEPROM settings (`$$`) have been received
+    : 1 argument: dict of the settings
+    
+    on_gcode_parser_stateupdate
+    : Emitted after Grbl's G-Code parser state has been received
+    : 1 argument: list of the state variables
+    
+    on_simulation_finished
+    : Emitted when Gerbil's target is set to "simulator" and the job is executed.
+    : 1 argument: list of all G-Code commands that would have been sent to Grbl
+    
+    on_vars_change
+    : Emitted after G-Code is loaded into the buffer and variables have been detected
+    : 1 argument: a dict of the detected variables
+    
+    on_preprocessor_feed_change
+    : Emitted when a F keyword is parsed from the G-Code.
+    : 1 argument: the feed rate in mm/min
+    """
+    
+    __version__ = "0.5.0"
+    
+    def __init__(self, name="mygrbl", ifacepath="/dev/ttyACM0"):
+        """Straightforward initialization tasks.
+        
+        @param name
+        An informal name of the instance. Useful if you are running
+        several instances to control several CNC machines at once.
+        It is only used for logging output and UI messages.
+        
+        @param ifacepath
+        The Arduino UNO USB device node living under /dev.
+        e.g. /dev/ttyACM0
+        """
+        
+        ## @var name
+        # Set an informal name of the instance. Useful if you are
+        # running several instances to control several CNC machines at
+        # once. It is only used for logging output and UI messages.
         self.name = name
 
-        self.cmode = None
+        ## @var cmode
+        # Get Grbl's current mode.
+        # Will be strings 'Idle', 'Check', 'Run'
+        self.cmode = None 
+        
+        ## @var cmpos
+        # Get a 3-tuple containing the current coordinates relative
+        # to the machine origin.
         self.cmpos = (0, 0, 0)
+        
+        ## @var cwpos
+        # Get a 3-tuple containing the current working coordinates.
+        # Working coordinates are relative to the currently selected
+        # coordinate system.
         self.cwpos = (0, 0, 0)
         
-        # Grbl's Gcode parser state variables
+        ## @var gps
+        # Get list of 12 elements containing the 12 Gcode Parser State
+        # variables of Grbl which are obtained by sending the raw 
+        # command `$G`. Will be available after setting
+        # `hash_state_requested` to True.
         self.gps = [None]*12
         
-        self.poll_interval = 1 # no less than 0.2 suggested by Grbl documentation
-        self.poll_counter = 0
+        ## @var poll_interval
+        # Set an interval in seconds for polling Grbl's state via
+        # the `?` command. The Grbl Wiki recommends to set this no lower
+        # than 0.2 (5 per second).
+        self.poll_interval = 0.2
         
+        ## @var settings
+        # Get a dictionary of Grbl's EEPROM settings which can be read
+        # after sending the `$$` command, or more conveniently after
+        # calling the method `request_settings()` of this class.
         self.settings = {}
+        
+        ## @var settings_hash
+        # Get a dictionary of Grbl's 'hash' settings (also stored in the
+        # EEPROM) which can be read after sending the `$#` command. It
+        # contains things like coordinate system offsets. See Grbl
+        # documentation for more info. Will be available shortly after
+        # setting `hash_state_requested` to `True`.
         self.settings_hash = {}
         
-        # ==================================================
-        # 'private' -- do not interfere with these variables
-        # ==================================================
+        ## @var gcode_parser_state_requested
+        # Set this variable to `True` to receive a callback with the
+        # event string "on_gcode_parser_stateupdate" containing
+        # data that Grbl sends after receiving the `$G` command.
+        # After the callback, this variable reverts to `False`.
+        self.gcode_parser_state_requested  = False
         
-        # Gerbil can be used in both console applications as well as GUIs. In both cases, 
-        self._logger = logging.getLogger("gerbil")
-        self._loghandler = CallbackLogHandler()
-        self._logger.addHandler(self._loghandler)
-        self._logger.setLevel(5)
-        self._logger.propagate = False
-                                              
-        self._ifacepath = ifacepath
-        
-        self._last_setting_number = 132
-        
-        self.gcode_parser_state_requested = False
+        ## @var hash_state_requested
+        # Set this variable to `True` to receive a callback with the
+        # event string "on_hash_stateupdate" containing
+        # the requested data. After the callback, this variable reverts
+        # to `False`.
         self.hash_state_requested = False
+        
+        ## @var logger
+        # The logger used by this class. The default is Python's own
+        # logger module. Use `setup_logging()` to attach custom
+        # log handlers.
+        self.logger = logging.getLogger("gerbil")
+        self.logger.setLevel(5)
+        self.logger.propagate = False
+        
+        ## @var target
+        # Set this to change the output target. Default is "firmware"
+        # which means the serial port. Another target is "simulator",
+        # you will receive a callback with even string
+        # "on_simulation_finished" and a buffer of the G-Code commands
+        # that would have been sent out to Grbl.
+        # TODO: Add "file" target.
+        self.target = "firmware"
+        
+        ## @var connected
+        # `True` when connected to Grbl (after boot), otherwise `False`
+        self.connected = False
+        
+        ## @var preprocessor
+        # All G-code commands will go through the preprocessor
+        # before they are sent out via the serial port. The preprocessor
+        # keeps track of, and can dynamically change, feed rates, as well
+        # as substitute variables. It has its own state and callback
+        # functions. See preprocessor.py for more information.
+        self.preprocessor = Preprocessor()
+        self.preprocessor.callback = self._preprocessor_callback
+
+        self._callback = self._default_callback
+        
+        self._ifacepath = ifacepath
+        self._last_setting_number = 132
         
         self._last_cmode = None
         self._last_cmpos = (0, 0, 0)
@@ -67,23 +251,17 @@ class Gerbil:
         self._rx_buffer_backlog_line_number = []
         self._rx_buffer_fill_percent = 0
         
-        self._gcodefilesize = 999999999
-        
-        self._current_line = "; cnctools_INIT" # explicit init string for debugging
+        self._current_line = ""
         self._current_line_sent = True
-
-        # state variables
         self._streaming_mode = None
-        self.incremental_streaming = False
-        
         self._wait_empty_buffer = False
-        
         self._streaming_complete = True
         self._job_finished = True
         self._streaming_src_end_reached = True
         self._streaming_enabled = True
         self._error = False
         self._alarm = False
+        self._incremental_streaming = False
         
         self._buffer = []
         self._buffer_size = 0
@@ -93,63 +271,107 @@ class Gerbil:
         self._buffer_size_stash = 0
         self._current_line_nr_stash = 0
         
-        self._target = "firmware"
-
-        self.connected = False
-        
-        # for interrupting long-running tasks in threads
         self._poll_keep_alive = False
         self._iface_read_do = False
         
-        # this class maintains two threads
         self._thread_polling = None
         self._thread_read_iface = None
         
         self._iface = None
         self._queue = Queue()
         
-        self.callback = self._default_callback
+        self._loghandler = None
         
-        self.preprocessor = Preprocessor()
-        self.preprocessor.callback = self._preprocessor_callback
         
         atexit.register(self.disconnect)
-        
-        
-    ## ====== 'public' methods ======
+
     
-    def set_callback(self, cb):
-        self.callback = cb
+    def setup_logging(self, handler=None):
+        """Assign a custom log handler.
         
-        self._loghandler.callback = cb
-      
-    def cnect(self,path=False):
+        Gerbil can be used in both console applications as well as
+        integrated in other projects like GUI's. Therefore, logging to
+        stdout is not always useful. You can pass a custom log message
+        handler to this method. If no handler is passed in, the default
+        handler is an instance of class `CallbackLogHandler`
+        (see file `callback_loghandler.py` included in this module).
+        CallbackLogHandler will deliver logged strings as callbacks to
+        the parent application, the event string will be "on_log".
+        
+        @param handler=None
+        An instance of a subclass inheriting from `logging.StreamHandler`
         """
-        Connect to the RS232 port of the Grbl controller. This is done by instantiating a RS232 object which by itself block-listens (in a thread) to asynchronous data sent by the Grbl controller. To read these data, the method 'self._onread' will block-run in a separate thread and fetch data via a thread queue. Once this is set up, we soft-reset the Grbl controller, after which status polling starts.
         
-        The only argument to this method is `path` (e.g. /dev/ttyACM0), which you can set if you haven't given the path during object instatiation.
+        if handler:
+            self._loghandler = handler
+        else:
+            # The default log handler shipped with this module will call
+            # self._callback() with first parameter "on_log" and second
+            # parameter with the logged string.
+            lh = CallbackLogHandler()
+            self._loghandler = lh
+            
+        # attach the selected log handler
+        self.logger.addHandler(self._loghandler)
+    
+    
+    @property
+    def callback(self):
+        return self._callback
+    
+    @callback.setter
+    def callback(self, callback):
+        """ Set your own function that will be called when a number of
+        asynchronous events happen. Useful for UI's. The
+        default function will just log to stdout. Note that this
+        function may be called from a Thread.
+        
+        @param callback
+        This callback function will receive two arguments. The first
+        is a string giving a label of the event, and the second is a variable
+        argument list `*args` containing data pertaining to the event.
+        """
+        self._callback = callback
+        if self._loghandler:
+            self._loghandler.callback = callback
+        
+      
+    def cnect(self,path=None):
+        """
+        Connect to the RS232 port of the Grbl controller.
+        
+        @param path=None Path to the device node under `/dev`
+        
+        This is done by instantiating a RS232 class, included in this
+        module, which by itself block-listens (in a thread) to
+        asynchronous data sent by the Grbl controller.
         """
         
         if path:
             self._ifacepath = path
-            
-        self._onboot_init()
         
         if self._iface == None:
-            self.callback("on_log", "{}: Setting up interface on {}".format(self.name, self._ifacepath))
+            self.logger.info("{}: Setting up interface on {}".format(self.name, self._ifacepath))
             self._iface = Interface("iface_" + self.name, self._ifacepath, 115200)
             self._iface.start(self._queue)
         else:
-            self.callback("on_log", "{}: Cannot start another interface. There is already an interface {}. This should not have happened.".format(self.name, self._iface))
+            self.logger.info("{}: Cannot start another interface. There is already an interface {}. This should not have happened.".format(self.name, self._iface))
             
         self._iface_read_do = True
         self._thread_read_iface = threading.Thread(target=self._onread)
         self._thread_read_iface.start()
         
+        self.softreset()
+        
         
     def disconnect(self):
         """
-        This method stops all threads, joins them, then closes the serial connection.
+        This method provides a controlled shutdown and cleanup of this
+        module.
+        
+        It stops all threads, joins them, then closes the serial
+        connection. For a safe shutdown of Grbl you may also want to
+        call `softreset()` before you call this method.
         """
         if self.is_connected() == False: return
         
@@ -158,31 +380,35 @@ class Gerbil:
         self._iface.stop()
         self._iface = None
         
-        self.callback("on_log", "{}: Please wait until reading thread has joined...".format(self.name))
+        self.logger.info("{}: Please wait until reading thread has joined...".format(self.name))
         self._iface_read_do = False
         self._queue.put("dummy_msg_for_joining_thread")
         self._thread_read_iface.join()
-        self.callback("on_log", "{}: Reading thread successfully joined.".format(self.name))
+        self.logger.info("{}: Reading thread successfully joined.".format(self.name))
         
         self.connected = False
         
-        self._onboot_init()
+        self._callback("on_disconnected")
         
-        self.callback("on_disconnected")
+    def softreset(self):
+        """
+        Immediately sends `Ctrl-X` to Grbl.
+        """
+        self._iface.write("\x18") # Ctrl-X
         
         
     def abort(self):
         """
-        An alias for `softreset()`, but also performs cleaning up.
+        An alias for `softreset()`.
         """
         if self.is_connected() == False: return
         self.softreset()
-        self._onboot_init()
         
         
     def hold(self):
         """
-        An alias for sending an exclamation mark.
+        Immediately sends the feed hold command (exclamation mark)
+        to Grbl.
         """
         if self.is_connected() == False: return
         self._iface_write("!")
@@ -190,7 +416,7 @@ class Gerbil:
         
     def resume(self):
         """
-        An alias for sending a tilde.
+        Immediately send the resume command (tilde) to Grbl.
         """
         if self.is_connected() == False: return
         self._iface_write("~")
@@ -198,100 +424,143 @@ class Gerbil:
         
     def killalarm(self):
         """
-        An alias for sending $X, but also performs a cleanup of data
+        Immediately send the kill alarm command ($X) to Grbl.
         """
         self._iface_write("$X\n")
-        #self._onboot_init()
-        
-        
-    def softreset(self):
-        """
-        An alias for sending Ctrl-X
-        """
-        self._iface.write("\x18") # Ctrl-X
         
         
     def homing(self):
         """
-        An alias for sending $H
+        Immediately send the homing command ($H) to Grbl.
         """
         self._iface_write("$H\n")
         
         
     def poll_start(self):
         """
-        Start method `_poll_state()` in a thread, which sends question marks in regular intervals forever, or until _poll_keep_alive is set to False. Grbl responds to the question marks with a status string enclosed in angle brackets < and >.
+        Starts forever polling Grbl's status with the `?` command. The 
+        polling interval is controlled by setting `self.poll_interval`.
+        You will receive callbacks with the "on_stateupdate" event
+        string containing 3 data parameters self.cmode, self.cmpos,
+        self.cwpos, but only when Grbl's state CHANGES.
         """
         if self.is_connected() == False: return
         self._poll_keep_alive = True
         if self._thread_polling == None:
             self._thread_polling = threading.Thread(target=self._poll_state)
             self._thread_polling.start()
-            self.callback("on_log", "{}: Polling thread started".format(self.name))
+            self.logger.info("{}: Polling thread started".format(self.name))
         else:
-            self.callback("on_log", "{}: Polling thread already running...".format(self.name))
+            self.logger.info("{}: Polling thread already running...".format(self.name))
             
         
     def poll_stop(self):
         """
-        Set _poll_keep_alive to False, which completes the status polling thread. This method also joins the thread to make sure it comes to a well defined end.
+        Stops polling that has been started with `poll_start()`
         """
         if self.is_connected() == False: return
         if self._thread_polling != None:
             self._poll_keep_alive = False
-            self.callback("on_log", "{}: Please wait until polling thread has joined...".format(self.name))
+            self.logger.info("{}: Please wait until polling thread has joined...".format(self.name))
             self._thread_polling.join()
-            self.callback("on_log", "{}: Polling thread has successfully  joined...".format(self.name))
+            self.logger.info("{}: Polling thread has successfully  joined...".format(self.name))
         else:
-            self.callback("on_log", "{}: Cannot start a polling thread. Another one is already running. This should not have happened.".format(self.name))
+            self.logger.info("{}: Cannot start a polling thread. Another one is already running.".format(self.name))
             
         self._thread_polling = None
 
             
     def set_feed_override(self, val):
         """
-        Pass True or False as argument to enable or disable feed override. If you pass True, all F gcode-commands will be stripped out from the stream. In addition, no feed override takes place until you also have set the requested feed via the method `set_feed()`.
+        Enable or disable the feed override feature.
+        
+        @param val
+        Pass `True` or `False` as argument to enable or disable dynamic
+        feed override. After passing `True`, you may set the 
+        requested feed by calling `self.request_feed()` one or many
+        times.
         """
-        self.preprocessor.set_feed_override(val)
+        self.preprocessor.feed_override = val
         
         
     def request_feed(self, requested_feed):
         """
-        Override the feed speed (in mm/min). Effecive only when you set `set_feed_override(True)`. An 'overriding' F gcode command will be inserted into the stream only when the currently requested feed differs from the last requested feed.
+        Override the feed speed. Effecive only when you set `set_feed_override(True)`.
+        
+        @param requested_feed
+        The feed speed in mm/min.
         """
-        self.preprocessor.request_feed(float(requested_feed))
+        self.preprocessor.request_feed = float(requested_feed)
 
         
-    def set_incremental_streaming(self, a):
+    @property
+    def incremental_streaming(self):
+        return self._incremental_streaming
+    
+    @incremental_streaming.setter
+    def incremental_streaming(self, onoff):
         """
-        Pass True to enable incremental streaming. The default is False.
+        Incremental streaming means that a new command is sent to Grbl
+        only after Grbl has responded with 'ok' to the last sent
+        command. This is necessary to flash $ settings to the EEPROM.
         
-        Incremental streaming means that a new command is sent to Grbl only after Grbl has responded with 'ok' to the last sent command.
+        Non-incremental streaming means that Grbl's 100-some-byte
+        receive buffer will be kept as full as possible at all times,
+        to give its motion planner system enough data to work with.
+        This results in smoother and faster axis motion. This is also
+        called 'advanced streaming protocol based on counting
+        characters' -- see Grbl Wiki.
         
-        Non-incremental streaming means that Grbl's 128-byte receive buffer will be kept as full as possible at all times, to give it's motion planner system enough data to work with. This results in smoother and faster axis motion.
+        You can dynamically change the streaming method even
+        during streaming, while running a job. The buffer fill
+        percentage will reflect the change even during streaming.
         
-        You can change the streaming method even during streaming.
+        @param onoff
+        Set to `True` to use incremental streaming. Set to `False` to
+        use non-incremental streaming. The default on module startup
+        is `False`.
         """
-        self.incremental_streaming = a
-        if self.incremental_streaming == True:
+        self._incremental_streaming = onoff
+        if self._incremental_streaming == True:
             self._wait_empty_buffer = True
-        self.callback("on_log", "{}: Incremental streaming set to {}".format(self.name, self.incremental_streaming))
+        self.logger.info("{}: Incremental streaming set to {}".format(self.name, self._incremental_streaming))
         
         
     def send_immediately(self, line):
         """
-        Strings passed to this function will bypass buffer management and preprocessing and will be sent to Grbl (and executed) immediately. Use this function with caution: Only send when you are sure Grbl's receive buffer can handle the data volume and when it doesn't interfere with currently running streams. Only send single commands at a time. Applications: manual jogging, coordinate settings.
+        G-Code command strings passed to this function will bypass
+        buffer management and will be sent to Grbl immediately.
+        Use this function with caution: Only send when you
+        are sure Grbl's receive buffer can handle the data volume and
+        when it doesn't interfere with currently running streams.
+        Only send single commands at a time.
+        
+        Applications of this method: manual jogging, coordinate settings
+        etc.
+        
+        @param line
+        A string of a single G-Code command to be sent. Doesn't have to
+        be \n terminated.
         """
         line = self.preprocessor.tidy(line)
         line = self.preprocessor.handle_feed(line)
         self._iface.write(line + "\n")
-        self.gcode_parser_state_requested = True # TODO: offload to main app
-        self.hash_state_requested = True
         
         
     def send_with_queue(self, lines):
         """
-        Strings passed to this function will be sent to Grbl (and executed) but WITH buffer management. If there is a currently running stream, data will be appended to the buffer, else the buffer will be reset and will only contain the data.
+        G-Code command strings passed to this function will be appended
+        to the current queue buffer. The queue then will start streaming
+        from the current buffer position (`current_line_number`).
+        
+        This method is useful for streaming more than two G-Code
+        commands or $ settings.
+        
+        You can call this method repeatedly, e.g. for submitting chunks
+        of G-Code, even while a job is running.
+        
+        @param lines
+        A string of G-Code commands. Each command is \n separated.
         """
         self._load_lines_into_buffer(lines)
         self.job_run()
@@ -299,17 +568,33 @@ class Gerbil:
         
     def write(self, lines):
         """
-        The Compiler class requires a method "write" to be present. This just appends lines to _buffer. `job_run()` must be called separately.
+        G-Code command strings passed to this function will be appended
+        to the current queue buffer, however a job is not started
+        automatically. You have to call `job_run()` to start streaming.
+        
+        You can call this method repeatedly, e.g. for submitting chunks
+        of G-Code, even while a job is running.
+        
+        @param lines
+        A string of G-Code commands. Each command is \n separated.
         """
         self._load_lines_into_buffer(lines)
         
 
     def load_file(self, filename):
         """
-        _buffer will be erased and filled with all file contents. Line numbers will become the file's line numbers.
+        Pass a filename to this function to load its contents into the
+        buffer. This only works when Grbl is Idle and the previous job
+        has completed. The previous buffer will be cleared. After this
+        function has completed, the buffer's contents will be identical
+        to the file content. Job is not started automatically.
+        Call `job_run` to start the job.
+        
+        @param filename
+        A string giving the relative or absolute file path
         """
         if self._job_finished == False:
-            self.callback("on_log", "{}: Job must be finished before you can load a file".format(self.name))
+            self.logger.info("{}: Job must be finished before you can load a file".format(self.name))
             return
         
         self.job_new()
@@ -320,16 +605,20 @@ class Gerbil:
     
     def job_run(self, linenr=None):
         """
-        Start stream from specific line
+        Run the current job, i.e. start streaming the current buffer
+        from a specific line number.
+        
+        @param linenr
+        If `linenr` is not specified, start streaming from the current
+        buffer position (`self.current_line_number`). If `linenr` is specified, start streaming from this line.
         """
         if self._buffer_size == 0:
-            self.callback("on_log", "{}: Nothing in the buffer!".format(self.name))
+            self.logger.info("{}: Nothing in the buffer!".format(self.name))
             return
         
         if linenr:
-            self.set_current_line_number(linenr)
+            self.current_line_number = linenr
 
-       
         self._set_streaming_src_end_reached(False)
         self._set_streaming_complete(False)
         self._streaming_enabled = True
@@ -338,107 +627,115 @@ class Gerbil:
         
 
     def job_halt(self):
+        """
+        Stop streaming. Grbl still will continue processing
+        all G-Code in its internal serial receive buffer.
+        """
         self._streaming_enabled = False
         
 
     def job_new(self):
+        """
+        Start a new job. A "job" in our terminology means the buffer's
+        contents. This function will empty the buffer, set the buffer
+        position to 0, and reset internal state.
+        """
         del self._buffer[:]
         self._buffer_size = 0
         self._current_line_nr = 0
-        self.callback("on_line_number_change", self._current_line_nr)
-        self.callback("on_bufsize_change", "string", 0)
+        self._callback("on_line_number_change", 0)
+        self._callback("on_bufsize_change", 0)
         self._set_streaming_complete(True)
         #self._set_job_finished(True) # we don't want a callback here
         self._job_finished = True
         self._set_streaming_src_end_reached(True)
         self._error = False
-        self._current_line = "; cnctools_CLEANUP" # explicit magic string for debugging
+        self._current_line = ""
         self._current_line_sent = True
         self.preprocessor.job_new()
+        self.callback("on_vars_change", self.preprocessor.vars)
     
-    def set_current_line_number(self, linenr):
+    @property
+    def current_line_number(self):
+        return self._current_line_nr
+    
+    @current_line_number.setter
+    def current_line_number(self, linenr):
         if linenr < self._buffer_size:
             self._current_line_nr = linenr
-            self.callback("on_line_number_change", self._current_line_nr)
-    
-    def set_target(self, targetstring):
-        self._target = targetstring
-        self.callback("on_log", "Current target is {}".format(self._target))
+            self._callback("on_line_number_change", self._current_line_nr)
         
     def get_buffer(self):
+        """
+        Return the current buffer for inspection. This is just a Python
+        list.
+        """
         return self._buffer
     
     def request_settings(self):
+        """
+        This will send `$$` to Grbl and you will receive a callback with
+        the argument 1 "on_settings_downloaded", and argument 2 a dict
+        of the settings.
+        """
         self._iface.write("$$\n")
-        
-    def get_settings(self):
-        return self.settings
+
     
     def buffer_stash(self):
+        """
+        Stash the current buffer and position away and initialize a
+        new job. This is useful if you want to stop the current job,
+        stream changed $ settings to Grbl, and then resume the job
+        where you left off. See also `self.buffer_unstash()`.
+        """
         self._buffer_stash = list(self._buffer)
         self._buffer_size_stash = self._buffer_size
         self._current_line_nr_stash = self._current_line_nr
-        
         self.job_new()
         
     def buffer_unstash(self):
+        """
+        Restores the previous stashed buffer and position.
+        """
         self._buffer = list(self._buffer_stash)
         self._buffer_size = self._buffer_size_stash
-        self.set_current_line_number(self._current_line_nr_stash)
-        self.callback("on_bufsize_change", "string", self._buffer_size)
-        
+        self.current_line_number = self._current_line_nr_stash
+        self._callback("on_bufsize_change", self._buffer_size)
 
-    # ====== 'private' methods ======
-    
     def _preprocessor_callback(self, event, *data):
-        
         if event == "on_preprocessor_var_undefined":
-            self.callback("on_log", "HALTED BECAUSE UNDEFINED VAR {}".format(data[0]))
+            self.logger.info("HALTED JOB BECAUSE UNDEFINED VAR {}".format(data[0]))
             self._set_streaming_src_end_reached(True)
             self.job_halt()
-        
         else:
-            # pass on to UI
-            self.callback(event, *data)
+            self._callback(event, *data)
         
     def _stream(self):
-        """
-        Take commands from _buffer and send them to Grbl, either one-by-one, or until its buffer is full.
-        """
         if self._streaming_src_end_reached:
-            #self._logger.debug("_stream(): Streming source end reached")
             return
         
         if self._streaming_enabled == False:
-            #self._logger.debug("_stream(): Streaming has been stopped. Call `job_run()` to resume.")
             return
         
-        if self._target == "firmware":
-            if self.incremental_streaming:
+        if self.target == "firmware":
+            if self._incremental_streaming:
                 self._set_next_line()
                 if self._streaming_src_end_reached == False:
                     self._send_current_line()
                 else:
                     self._set_job_finished(True)
-                    
             else:
                 self._fill_rx_buffer_until_full()
                 
-        elif self._target == "simulator":
+        elif self.target == "simulator":
             buf = []
             while self._streaming_src_end_reached == False:
                 self._set_next_line()
                 buf.append(self._current_line)
-            
             self._set_job_finished(True)
-            self.callback("on_simulation_finished", buf)
-
-        
+            self._callback("on_simulation_finished", buf)
         
     def _fill_rx_buffer_until_full(self):
-        """
-        Does what the function name says.
-        """
         while True:
             if self._current_line_sent == True:
                 self._set_next_line()
@@ -447,15 +744,10 @@ class Gerbil:
                 self._send_current_line()
             else:
                 break
-                
-                
-                
+
     def _set_next_line(self):
-        """
-        Gets next line from file or _buffer, and sets _current_line
-        """
         progress_percent = int(100 * self._current_line_nr / self._buffer_size)
-        self.callback("on_progress_percent", progress_percent)
+        self._callback("on_progress_percent", progress_percent)
         
         if self._current_line_nr < self._buffer_size:
             # still something in _buffer, pop it
@@ -465,16 +757,11 @@ class Gerbil:
             self._current_line = line
             self._current_line_sent = False
             self._current_line_nr += 1
-                
         else:
             # the buffer is empty, nothing more to read
             self._set_streaming_src_end_reached(True)
 
-        
     def _send_current_line(self):
-        """
-        Unconditionally sends the current line to Grbl.
-        """
         self._set_streaming_complete(False)
         line_length = len(self._current_line) + 1 # +1 for \n which we will append below
         self._rx_buffer_fill.append(line_length) 
@@ -482,50 +769,28 @@ class Gerbil:
         self._rx_buffer_backlog_line_number.append(self._current_line_nr)
         self._iface_write(self._current_line + "\n")
         self._current_line_sent = True
-        self.callback("on_line_sent", self._current_line_nr, self._current_line)
-        
-    
-    
+        self._callback("on_line_sent", self._current_line_nr, self._current_line)
+
     def _rx_buf_can_receive_current_line(self):
-        """
-        Returns True or False depeding on Grbl's rx buffer can hold _current_line
-        """
         rx_free_bytes = self._rx_buffer_size - sum(self._rx_buffer_fill)
         required_bytes = len(self._current_line) + 1 # +1 because \n
         return rx_free_bytes >= required_bytes
-    
-        
+
     def _rx_buffer_fill_pop(self):
-        """
-        We keep a backlog (_rx_buffer_fill) of command sizes in bytes to know at any time how full Grbl's rx buffer is. Once we receive an 'ok' from Grbl, we can remove the first element in this backlog.
-        """
         if len(self._rx_buffer_fill) > 0:
             self._rx_buffer_fill.pop(0)
             processed_command = self._rx_buffer_backlog.pop(0)
             ln = self._rx_buffer_backlog_line_number.pop(0)
-            self.callback("on_processed_command", ln, processed_command)
-            
-            
-        #self.callback("on_log", "{}: _rx_buffer_fill_pop {} {}".format(self.name, self._rx_buffer_fill, self._streaming_src_end_reached))
+            self._callback("on_processed_command", ln, processed_command)
         
         if self._streaming_src_end_reached == True and len(self._rx_buffer_fill) == 0:
             self._set_job_finished(True)
             self._set_streaming_complete(True)
-            
-    
-    
+
     def _iface_write(self, data):
-        """
-        A convenient wrapper around _iface.write with a callback for UI's
-        """
         num_written = self._iface.write(data)
-        self.callback("on_send_command", data.strip())
-        
         
     def _onread(self):
-        """
-        This method is run in a separate Thread. It blocks at the line queue.get() until the RS232 object put()'s something into this queue asynchronously. It's an endless loop, interruptable by setting _iface_read_do to False.
-        """
         while self._iface_read_do == True:
             line = self._queue.get()
             
@@ -534,40 +799,37 @@ class Gerbil:
                     self._update_state(line)
                     
                 elif line == "ok":
-                    #self._logger.debug("OK")
                     self._handle_ok()
                     
-                elif re.match("^\[G[0123].*", line):
+                elif re.match("^\[G[0123] .*", line):
                     self._update_gcode_parser_state(line)
                     
-                elif re.match("^\[[GTP][59LR].*", line):
+                elif re.match("^\[...:.*", line):
                     self._update_hash_state(line)
                     if "PRB" in line:
                         # last line
-                        self.callback("on_hash_stateupdate")
+                        self._callback("on_hash_stateupdate", self.settings_hash)
                     
                 elif "ALARM" in line:
-                    self.callback("on_alarm", line)
+                    self._callback("on_alarm", line)
                     
                 elif "error" in line:
-                    self._logger.debug("ERROR")
+                    self.logger.debug("ERROR")
                     self._error = True
-                    self._logger.debug("%s: _rx_buffer_backlog at time of error: %s", self.name,  self._rx_buffer_backlog)
+                    self.logger.debug("%s: _rx_buffer_backlog at time of error: %s", self.name,  self._rx_buffer_backlog)
                     if len(self._rx_buffer_backlog) > 0:
                         problem_command = self._rx_buffer_backlog[0]
                         problem_line = self._rx_buffer_backlog_line_number[0]
                     else:
                         problem_command = "unknown"
                         problem_line = -1
-                        
-                    self.callback("on_error", line, problem_command, problem_line)
+                    self._callback("on_error", line, problem_command, problem_line)
                     
                 elif "Grbl " in line:
                     self._on_bootup()
                         
                 else:
                     m = re.match("\$(.*)=(.*) \((.*)\)", line)
-                    self.callback("on_read", line)
                     if m:
                         key = int(m.group(1))
                         val = m.group(2)
@@ -577,16 +839,11 @@ class Gerbil:
                             "cmt" : comment
                             }
                         if key == self._last_setting_number:
-                            self.callback("on_settings_downloaded")
-                            
+                            self._callback("on_settings_downloaded", self.settings)
                     else:
-                        self.callback("on_read", line)
-                
-                
+                        self.logger.info("{}: Could not parse settings: {}".format(self.name, line))
+
     def _handle_ok(self):
-        """
-        When we receive an 'ok' from Grbl, submit more.
-        """
         if self._streaming_complete == False:
             self._rx_buffer_fill_pop()
             if not (self._wait_empty_buffer and len(self._rx_buffer_fill) > 0):
@@ -594,34 +851,23 @@ class Gerbil:
                 self._stream()
         
         self._rx_buffer_fill_percent = int(100 - 100 * (self._rx_buffer_size - sum(self._rx_buffer_fill)) / self._rx_buffer_size)
-        self.callback("on_rx_buffer_percentage", self._rx_buffer_fill_percent)
-                
-                            
+        self._callback("on_rx_buffer_percent", self._rx_buffer_fill_percent)
+
     def _on_bootup(self):
         self._onboot_init()
         self.connected = True
-        self.callback("on_log", "{}: Booted!".format(self.name))
-        self.callback("on_boot")
-        #self.poll_start()
-        
+        self.logger.info("{}: Booted!".format(self.name))
+        self._callback("on_boot")
         
     def _update_hash_state(self, line):
         line = line.replace("]", "").replace("[", "")
         parts = line.split(":")
-        
         key = parts[0]
         tpl_str = parts[1].split(",")
-        
         tpl = tuple([float(x) for x in tpl_str])
         self.settings_hash[key] = tpl
         
-        
-        
-            
     def _update_gcode_parser_state(self, line):
-        """
-        Parse Grbl's Gcode parser state report and inform via callback
-        """
         m = re.match("\[G(\d) G(\d\d) G(\d\d) G(\d\d) G(\d\d) G(\d\d) M(\d) M(\d) M(\d) T(\d) F([\d.-]*?) S([\d.-]*?)\]", line)
         if m:
             self.gps[0] = m.group(1) # motionmode
@@ -636,33 +882,29 @@ class Gerbil:
             self.gps[9] = m.group(10) # tool number
             self.gps[10] = m.group(11) # current feed
             self.gps[11] = m.group(12) # current rpm
-            self.callback("on_gcode_parser_stateupdate", self.gps)
+            self._callback("on_gcode_parser_stateupdate", self.gps)
         else:
-            pass
-            #logging.log(300, "%s: Could not parse gcode parser report: '%s'", self.name, line)
+            self.logger.info("{}: Could not parse gcode parser report: '{}'".format(self.name, line))
         
-            
     def _update_state(self, line):
-        """
-        Parse Grbl's status line and inform via callback
-        """
         m = re.match("<(.*?),MPos:(.*?),WPos:(.*?)>", line)
         self.cmode = m.group(1)
         mpos_parts = m.group(2).split(",")
         wpos_parts = m.group(3).split(",")
         self.cmpos = (float(mpos_parts[0]), float(mpos_parts[1]), float(mpos_parts[2]))
         self.cwpos = (float(wpos_parts[0]), float(wpos_parts[1]), float(wpos_parts[2]))
-        #self.callback("on_log", "=== STATE === %s %s %s", self.name, self.cmode, self.cmpos, self.cwpos)
-        
+
         if (self.cmode != self._last_cmode or
             self.cmpos != self._last_cmpos or
             self.cwpos != self._last_cwpos):
-            self.callback("on_stateupdate", self.cmode, self.cmpos, self.cwpos)
+            self._callback("on_stateupdate", self.cmode, self.cmpos, self.cwpos)
+            if self.cmode == "Idle":
+                self.gcode_parser_state_requested = True
+                self.hash_state_requested = True
         
         self._last_cmode = self.cmode
         self._last_cmpos = self.cmpos
         self._last_cwpos = self.cwpos
-        
         
     def _load_line_into_buffer(self, line):
         line = self.preprocessor.tidy(line)
@@ -671,26 +913,20 @@ class Gerbil:
             self._buffer.append(line)
             self._buffer_size += 1
         
-        
     def _load_lines_into_buffer(self, string):
         lines = string.split("\n")
         for line in lines:
             self._load_line_into_buffer(line)
-        
-        self.callback("on_bufsize_change", "string", self._buffer_size)
-        self.callback("on_vars_change", self.preprocessor.vars)
-        
+        self._callback("on_bufsize_change", self._buffer_size)
+        self._callback("on_vars_change", self.preprocessor.vars)
         
     def is_connected(self):
         if self.connected != True:
-            self.callback("on_log", "{}: Not yet connected".format(self.name))
+            self.logger.info("{}: Not yet connected".format(self.name))
         return self.connected
     
-    
     def _onboot_init(self):
-        """
-        called after boot. Should mimic Grbl's initial state after boot.
-        """
+        # called after boot. Mimics Grbl's initial state after boot.
         del self._rx_buffer_fill[:]
         del self._rx_buffer_backlog[:]
         del self._rx_buffer_backlog_line_number[:]
@@ -698,22 +934,20 @@ class Gerbil:
         self._set_job_finished(True)
         self._set_streaming_src_end_reached(True)
         self._error = False
-        self._current_line = "; cnctools_ONBOOT_INIT" # explicit magic string for debugging
+        self._current_line = ""
         self._current_line_sent = True
         self._clear_queue()
         self.preprocessor.onboot_init()
-        self.callback("on_progress_percent", 0)
-        self.callback("on_rx_buffer_percentage", 0)
-        
+        self._callback("on_progress_percent", 0)
+        self._callback("on_rx_buffer_percent", 0)
         
     def _clear_queue(self):
         try:
             junk = self._queue.get_nowait()
-            self._logger.debug("Discarding junk %s", junk)
+            self.logger.debug("Discarding junk %s", junk)
         except:
-            self._logger.debug("Queue was empty")
-            
-            
+            self.logger.debug("Queue was empty")
+
     def _poll_state(self):
         while self._poll_keep_alive:
             if self.gcode_parser_state_requested:
@@ -724,40 +958,29 @@ class Gerbil:
                 self.hash_state_requested = False
             else:
                 self._get_state()
-
             time.sleep(self.poll_interval)
-            
-        self.callback("on_log", "{}: Polling has been stopped".format(self.name))
-        
-        
+        self.logger.info("{}: Polling has been stopped".format(self.name))
+
     def _get_state(self):
         self._iface.write("?")
-        
-        
+
     def get_gcode_parser_state(self):
         self._iface.write("$G\n")
-        
+
     def get_hash_state(self):
         self._iface.write("$#\n")
-        
-            
+
     def _set_streaming_src_end_reached(self, a):
         self._streaming_src_end_reached = a
-        self.callback("on_log", "{}: Streaming source end reached: {}".format(self.name, a))
+        self.logger.info("{}: Streaming source end reached: {}".format(self.name, a))
 
-
-    # The buffer has been fully written to Grbl, but Grbl is still processing the last commands.
     def _set_streaming_complete(self, a):
         self._streaming_complete = a
-        #self.callback("on_log", "{}: Streaming completed: {}".format(self.name, a))
-        
-        
-    # Grbl has finished processing everything
+
     def _set_job_finished(self, a):
         self._job_finished = a
         if a == True:
-            self.callback("on_job_completed")
-        
+            self._callback("on_job_completed")
 
     def _default_callback(self, status, *args):
-        print("GRBL DEFAULT CALLBACK", status, args)
+        print("GERBIL DEFAULT CALLBACK", status, args)

@@ -6,12 +6,7 @@ class CallbackLogHandler(logging.StreamHandler):
         self.callback = cb
 
     def emit(self, record):
-        s = self.format(record)
-        #logging.StreamHandler.emit(self, record)
-        #return
-        
         if self.callback:
-            self.callback("on_log", record.message)
+            self.callback("on_log", record.getMessage())
         else:
-            #print("NO CALLBACK", record.message)
             logging.StreamHandler.emit(self, record)
