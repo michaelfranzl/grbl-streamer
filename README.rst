@@ -1,7 +1,7 @@
 Gerbil -- A universal Grbl interface module for Python3
 =======================================================
 
-A universal Grbl CNC firmware interface module for Python3 providing a convenient high-level API for scripting or integration into parent applications like GUI's.
+Universal Grbl CNC firmware interface module for Python3 providing a convenient high-level API for scripting or integration into parent applications like GUI's.
 
 There are a number of streaming applications available for the Grbl CNC controller, but none of them seem to be an universal, re-usable standard Python module. Gerbil attempts to fill that gap.
 
@@ -31,6 +31,10 @@ Usage example
 --------
 
 Try this simple example in a Python3 console::
+    
+    cd gerbil/gerbil
+    
+    python3
 
     from gerbil import Gerbil
 
