@@ -8,7 +8,8 @@ There are a number of streaming applications available for the Grbl CNC controll
 Gerbil is a name of a cute desert rodent. We chose the name due to its similarity to the name "Grbl".
 
     
-## Features
+Features
+--------
 
 * Re-usable across projects
 * Non-blocking
@@ -21,13 +22,15 @@ Gerbil is a name of a cute desert rodent. We chose the name due to its similarit
 * Buffer stashing
 * Job halt and resume
 
-## Documentation
+Documentation
+--------
 
 We believe that the code is well documented. This module is for developers, not end users.
 
-## Usage example
+Usage example
+--------
 
-Try this simple example::
+Try this simple example in a Python3 console::
 
     from gerbil import Gerbil
 
@@ -57,7 +60,8 @@ Try this simple example::
     grbl.disconnect()
 
 
-# License
+License
+--------
 
 "Gerbil" (c) 2015 Red (E) Tools Ltd.
 
