@@ -41,7 +41,7 @@ Try this simple example in a Python3 console::
         print("MY CALLBACK: event={} data={}".format(eventstring.ljust(30), ", ".join(args)))
         # Now, do something interesting with these callbacks
 
-    grbl = Gerbil()
+    grbl = Gerbil("my_grbl", "/dev/ttyACM0")
     grbl.setup_logging()
     grbl.callback = my_callback
     grbl.cnect()
