@@ -544,7 +544,7 @@ class Gerbil:
         """
         line = self.preprocessor.tidy(line)
         line = self.preprocessor.handle_feed(line)
-        self._iface.write(line + "\n")
+        self._iface_write(line + "\n")
         
         
     def stream(self, lines):
@@ -570,6 +570,9 @@ class Gerbil:
         @param lines
         A string of G-Code commands. Each command is \n separated.
         """
+        if type(lines) is list:
+            lines = "\n".join(lines)
+            
         self._load_lines_into_buffer(lines)
         
 
@@ -670,7 +673,7 @@ class Gerbil:
         the argument 1 "on_settings_downloaded", and argument 2 a dict
         of the settings.
         """
-        self._iface.write("$$\n")
+        self._iface_write("$$\n")
 
     
     def buffer_stash(self):
@@ -780,6 +783,7 @@ class Gerbil:
             self._set_streaming_complete(True)
 
     def _iface_write(self, data):
+        self._callback("on_write", data)
         num_written = self._iface.write(data)
         
     def _onread(self):
@@ -795,20 +799,23 @@ class Gerbil:
                     
                 elif re.match("^\[G[0123] .*", line):
                     self._update_gcode_parser_state(line)
+                    self._callback("on_read", line)
                     
                 elif re.match("^\[...:.*", line):
                     self._update_hash_state(line)
+                    self._callback("on_read", line)
                     if "PRB" in line:
                         # last line
                         self._callback("on_hash_stateupdate", self.settings_hash)
                     
                 elif "ALARM" in line:
+                    self._callback("on_read", line)
                     self._callback("on_alarm", line)
                     
                 elif "error" in line:
-                    self.logger.debug("ERROR")
+                    #self.logger.debug("ERROR")
                     self._error = True
-                    self.logger.debug("%s: _rx_buffer_backlog at time of error: %s", self.name,  self._rx_buffer_backlog)
+                    #self.logger.debug("%s: _rx_buffer_backlog at time of error: %s", self.name,  self._rx_buffer_backlog)
                     if len(self._rx_buffer_backlog) > 0:
                         problem_command = self._rx_buffer_backlog[0]
                         problem_line = self._rx_buffer_backlog_line_number[0]
@@ -818,6 +825,7 @@ class Gerbil:
                     self._callback("on_error", line, problem_command, problem_line)
                     
                 elif "Grbl " in line:
+                    self._callback("on_read", line)
                     self._on_bootup()
                         
                 else:
@@ -830,10 +838,12 @@ class Gerbil:
                             "val" : val,
                             "cmt" : comment
                             }
+                        self._callback("on_read", line)
                         if key == self._last_setting_number:
                             self._callback("on_settings_downloaded", self.settings)
                     else:
-                        self.logger.info("{}: Could not parse settings: {}".format(self.name, line))
+                        self._callback("on_read", line)
+                        #self.logger.info("{}: Could not parse settings: {}".format(self.name, line))
 
     def _handle_ok(self):
         if self._streaming_complete == False:
@@ -863,7 +873,7 @@ class Gerbil:
         m = re.match("\[G(\d) G(\d\d) G(\d\d) G(\d\d) G(\d\d) G(\d\d) M(\d) M(\d) M(\d) T(\d) F([\d.-]*?) S([\d.-]*?)\]", line)
         if m:
             self.gps[0] = m.group(1) # motionmode
-            self.gps[1] = m.group(2) # coordinate system
+            self.gps[1] = m.group(2) # current coordinate system
             self.gps[2] = m.group(3) # plane
             self.gps[3] = m.group(4) # units
             self.gps[4] = m.group(5) # dist
@@ -942,12 +952,14 @@ class Gerbil:
 
     def _poll_state(self):
         while self._poll_keep_alive:
-            if self.gcode_parser_state_requested:
-                self.get_gcode_parser_state()
-                self.gcode_parser_state_requested = False
-            elif self.hash_state_requested:
+            if self.hash_state_requested:
                 self.get_hash_state()
                 self.hash_state_requested = False
+                
+            elif self.gcode_parser_state_requested:
+                self.get_gcode_parser_state()
+                self.gcode_parser_state_requested = False
+            
             else:
                 self._get_state()
             time.sleep(self.poll_interval)
@@ -957,10 +969,10 @@ class Gerbil:
         self._iface.write("?")
 
     def get_gcode_parser_state(self):
-        self._iface.write("$G\n")
+        self._iface_write("$G\n")
 
     def get_hash_state(self):
-        self._iface.write("$#\n")
+        self._iface_write("$#\n")
 
     def _set_streaming_src_end_reached(self, a):
         self._streaming_src_end_reached = a
