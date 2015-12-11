@@ -9,6 +9,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 import re
 import logging
+import math
 
 class Preprocessor:
     """ This class should receive all G-Code lines before they are sent out to the Grbl controller. It's main features are:
@@ -38,6 +39,17 @@ class Preprocessor:
         
         self.request_feed = None
         self._current_feed = None
+        
+        self._current_distance_mode = None
+        self._current_motion_mode = None
+        
+        self.pos = [None, None, None]
+        self._axes = ["X", "Y", "Z"]
+        self._regexps = []
+        for i in range(0, 3):
+            axis = self._axes[i]
+            self._regexps.append(re.compile(".*" + axis + "([-.\d]+)"))
+        
         self._re_findall_vars = re.compile("#(\d)")
         self._re_var_replace = re.compile(r"#\d")
         self._re_feed = re.compile(".*F([.\d]+)")
@@ -78,7 +90,99 @@ class Preprocessor:
         self._strip_comments()
         self._strip_unsupported()
         self._strip()
+        
         return self.line
+    
+    
+    def fractionize(self, line, threshold=1, segment_len=0.1):
+        """
+        Breaks lines longer than a certain threshold into shorter segments
+        
+        @param line
+        A single G-Code line as string
+        
+        @param threshold
+        Maximum line length that will not be fractionized
+        
+        @param segment_len
+        Segment length of the fractionized line (approx. value)
+        
+        @return A list of G-Code commands
+        """
+        result = []
+        
+        # parse G0 .. G3 and remember
+        m = re.match("(G[0123])([^\d]|$)", line)
+        if m:
+            self._current_motion_mode = m.group(1)
+            #print("MOTION MODE DETECTED %s" % self._current_motion_mode)
+        
+        # parse G90 and G91 and remember
+        m = re.match("(G9[01])([^\d]|$)", line)
+        if m:
+            self._current_distance_mode = m.group(1)
+            #print("DISTANCE MODE DETECTED %s" % self._current_distance_mode)
+            
+
+        # Parse the G-Code line, remember positions,
+        # and calculate distance from last position
+        
+        pos_curr = [None, None, None] # end position of this G-Code cmd
+        dist_curr = [0, 0, 0] # distance traveled by this G-Code cmd
+        
+        for i in range(0, 3):
+            # loop over X, Y, Z axes
+            axis = self._axes[i]
+            regexp = self._regexps[i]
+            
+            m = re.match(regexp, line)
+            if m:
+                if self._current_distance_mode == "G90":
+                    # absolute distances
+                    pos_curr[i] = float(m.group(1))
+                    if self.pos[i] == None:
+                        # remember this as last position
+                        self.pos[i] = pos_curr[i]
+                    # calculate distance
+                    dist_curr[i] = pos_curr[i] - self.pos[i]
+                else:
+                    # relative distances
+                    dist_curr[i] = float(m.group(1))
+
+        length = math.sqrt(dist_curr[0] * dist_curr[0] + dist_curr[1] * dist_curr[1] + dist_curr[2] * dist_curr[2])
+        
+        if self._current_motion_mode == "G1" and length > threshold:
+            # this line can be fractionized
+            num_fractions = int(length/segment_len)
+            result.append(self._current_motion_mode)
+            for k in range(0, num_fractions):
+                # render segments
+                txt = ""
+                for i in range(0, 3):
+                    # loop over X, Y, Z axes
+                    diff = (k + 1) * dist_curr[i] / num_fractions
+                    if self._current_distance_mode == "G90":
+                        # absolute distances
+                        diff += self.pos[i]
+                    if diff > 0:
+                        txt += "{}{:0.3f}".format(self._axes[i], diff)
+                        
+                result.append(txt)
+            
+        else:
+            # this line cannot be fractionized
+            # return the line as it was passed in
+            result = [line]
+
+        # remember last pos
+        for i in range(0, 3):
+            # loop over X, Y, Z axes
+            if pos_curr[i] != None:
+                self.pos[i] = pos_curr[i]
+                
+        #print("STATUS: pos={0} len={1} pos_curr={2} dist_curr={3}".format(self.pos, length, pos_curr, dist_curr))
+                
+        return result
     
     
     def find_vars(self, line):
@@ -143,7 +247,7 @@ class Preprocessor:
     def _strip_comments(self):
         # strip comments (after semicolon and opening parenthesis)
         self.line = re.match("([^;(]*)", self.line).group(1)
-        self.line += ""
+        #self.line += ""
 
 
     def _strip(self):

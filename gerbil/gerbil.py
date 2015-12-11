@@ -910,10 +910,12 @@ class Gerbil:
         
     def _load_line_into_buffer(self, line):
         line = self.preprocessor.tidy(line)
-        if line != "":
-            self.preprocessor.find_vars(line)
-            self._buffer.append(line)
-            self._buffer_size += 1
+        lines = self.preprocessor.fractionize(line)
+        for line in lines:
+            if line != "":
+                self.preprocessor.find_vars(line)
+                self._buffer.append(line)
+                self._buffer_size += 1
         
     def _load_lines_into_buffer(self, string):
         lines = string.split("\n")
