@@ -96,7 +96,9 @@ class Preprocessor:
     
     def fractionize(self, line, threshold=1, segment_len=0.1):
         """
-        Breaks lines longer than a certain threshold into shorter segments
+        Breaks lines longer than a certain threshold into shorter segments.
+        This is useful for faster response times when pausing the stream
+        as well as for the dynamic feed adjustment feature of gerbil.
         
         @param line
         A single G-Code line as string
