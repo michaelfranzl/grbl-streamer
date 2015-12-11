@@ -178,6 +178,11 @@ class Gerbil:
         # than 0.2 (5 per second).
         self.poll_interval = 0.2
         
+        ## @var eta_calc_interval
+        # The interval that gerbil will make callback `on_eta_chage` delivering
+        # the ETA as seconds
+        self.eta_calc_interval = 5
+        
         ## @var settings
         # Get a dictionary of Grbl's EEPROM settings which can be read
         # after sending the `$$` command, or more conveniently after
@@ -235,6 +240,25 @@ class Gerbil:
         # functions. See preprocessor.py for more information.
         self.preprocessor = Preprocessor()
         self.preprocessor.callback = self._preprocessor_callback
+        
+        ## @var eta
+        # The number of seconds neccessary to process the entire buffer
+        self.eta = 0
+        
+        ## @var travel_dist_buffer
+        # The total distance of all G-Codes in the buffer.
+        # 1st element for G0, 2nd element for G1
+        self.travel_dist_buffer = {
+            "G0": 0,
+            "G1": 0
+            }
+        
+        ## @var travel_dist_current
+        # The currently travelled distance. Can be used to calculate ETA.
+        self.travel_dist_current = {
+            "G0": 0,
+            "G1": 0
+            }
 
         self._callback = self._default_callback
         
@@ -282,6 +306,7 @@ class Gerbil:
         
         self._loghandler = None
         
+        self._counter = 0 # general-purpose counter for timing tasks inside of _poll_state        
         
         atexit.register(self.disconnect)
 
@@ -613,6 +638,11 @@ class Gerbil:
         
         if linenr:
             self.current_line_number = linenr
+            
+        self.travel_dist_current = {
+            "G0": 0,
+            "G1": 0
+            }
 
         self._set_streaming_src_end_reached(False)
         self._set_streaming_complete(False)
@@ -648,7 +678,18 @@ class Gerbil:
         self._current_line = ""
         self._current_line_sent = True
         self.preprocessor.job_new()
+        self.eta = 0
+        self.travel_dist_buffer = {
+            "G0": 0,
+            "G1": 0
+            }
+        self.travel_dist_current = {
+            "G0": 0,
+            "G1": 0
+            }
+        
         self.callback("on_vars_change", self.preprocessor.vars)
+        self._callback("on_eta_change", 0)
     
     @property
     def current_line_number(self):
@@ -749,9 +790,16 @@ class Gerbil:
             line = self._buffer[self._current_line_nr].strip()
             line = self.preprocessor.handle_feed(line)
             line = self.preprocessor.substitute_vars(line)
+            lines, travel_dist, motion_mode, feed = self.preprocessor.fractionize(line)
             self._current_line = line
             self._current_line_sent = False
             self._current_line_nr += 1
+            
+            # note that `lines` is discarded here. We only need the travel distance
+            # which is a nice side product of the fractionize function
+            if motion_mode == "G0" or motion_mode == "G1":
+                self.travel_dist_current[motion_mode] += travel_dist
+
         else:
             # the buffer is empty, nothing more to read
             self._set_streaming_src_end_reached(True)
@@ -782,9 +830,9 @@ class Gerbil:
             self._set_job_finished(True)
             self._set_streaming_complete(True)
 
-    def _iface_write(self, data):
-        self._callback("on_write", data)
-        num_written = self._iface.write(data)
+    def _iface_write(self, line):
+        self._callback("on_write", line)
+        num_written = self._iface.write(line)
         
     def _onread(self):
         while self._iface_read_do == True:
@@ -827,6 +875,7 @@ class Gerbil:
                 elif "Grbl " in line:
                     self._callback("on_read", line)
                     self._on_bootup()
+                    self.request_settings()
                         
                 else:
                     m = re.match("\$(.*)=(.*) \((.*)\)", line)
@@ -908,9 +957,27 @@ class Gerbil:
         self._last_cmpos = self.cmpos
         self._last_cwpos = self.cwpos
         
+    def _calculate_eta(self):
+        mins = 0
+        mins += (self.travel_dist_buffer["G0"] - self.travel_dist_current["G0"]) / (float(self.settings[110]["val"]))
+        mins += (self.travel_dist_buffer["G1"] - self.travel_dist_current["G1"]) / self.preprocessor.current_feed
+
+        self._callback("on_eta_change", mins * 60)
+
+        
     def _load_line_into_buffer(self, line):
         line = self.preprocessor.tidy(line)
-        lines = self.preprocessor.fractionize(line)
+        line = self.preprocessor.handle_feed(line)
+        lines, travel_dist, motion_mode, feed = self.preprocessor.fractionize(line)
+        
+        if feed != None and (motion_mode == "G0" or motion_mode == "G1"):
+            self.travel_dist_buffer[motion_mode] += travel_dist
+            if motion_mode == "G0":
+                # based on x max rate
+                self.eta += travel_dist / float(self.settings[110]["val"]) * 60
+            else:
+                self.eta += travel_dist / feed * 60
+            
         for line in lines:
             if line != "":
                 self.preprocessor.find_vars(line)
@@ -923,6 +990,7 @@ class Gerbil:
             self._load_line_into_buffer(line)
         self._callback("on_bufsize_change", self._buffer_size)
         self._callback("on_vars_change", self.preprocessor.vars)
+        self._callback("on_eta_change", self.eta)
         
     def is_connected(self):
         if self.connected != True:
@@ -954,6 +1022,11 @@ class Gerbil:
 
     def _poll_state(self):
         while self._poll_keep_alive:
+            self._counter += 1
+            
+            if self._counter % (self.eta_calc_interval / self.poll_interval) == 0 and self.cmode == "Run":
+                self._calculate_eta()
+            
             if self.hash_state_requested:
                 self.get_hash_state()
                 self.hash_state_requested = False
@@ -964,6 +1037,7 @@ class Gerbil:
             
             else:
                 self._get_state()
+                
             time.sleep(self.poll_interval)
         self.logger.info("{}: Polling has been stopped".format(self.name))
 

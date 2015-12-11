@@ -38,9 +38,9 @@ class Preprocessor:
         self.feed_override = False
         
         self.request_feed = None
-        self._current_feed = None
+        self.current_feed = None
         
-        self._current_distance_mode = None
+        self._current_distance_mode = "G90"
         self._current_motion_mode = None
         
         self.pos = [None, None, None]
@@ -65,8 +65,8 @@ class Preprocessor:
         """
         Call this after Grbl has booted. Mimics Grbl's internal state.
         """
-        self._current_feed = 0 # After boot, Grbl's feed is not set.
-        self.callback("on_preprocessor_feed_change", self._current_feed)
+        self.current_feed = None # After boot, Grbl's feed is not set.
+        self.callback("on_preprocessor_feed_change", self.current_feed)
         
     
     def set_vars(self, vars):
@@ -94,7 +94,7 @@ class Preprocessor:
         return self.line
     
     
-    def fractionize(self, line, threshold=1, segment_len=0.1):
+    def fractionize(self, line, threshold=1, segment_len=0.5):
         """
         Breaks lines longer than a certain threshold into shorter segments.
         This is useful for faster response times when pausing the stream
@@ -108,8 +108,6 @@ class Preprocessor:
         
         @param segment_len
         Segment length of the fractionized line (approx. value)
-        
-        @return A list of G-Code commands
         """
         result = []
         
@@ -184,7 +182,7 @@ class Preprocessor:
                 
         #print("STATUS: pos={0} len={1} pos_curr={2} dist_curr={3}".format(self.pos, length, pos_curr, dist_curr))
                 
-        return result
+        return result, length, self._current_motion_mode, self.current_feed
     
     
     def find_vars(self, line):
@@ -265,9 +263,9 @@ class Preprocessor:
         if self.feed_override == False and contains_feed:
             # Simiply update the UI for detected feed
             parsed_feed = float(match.group(1))
-            if self._current_feed != parsed_feed:
+            if self.current_feed != parsed_feed:
                 self.callback("on_preprocessor_feed_change", parsed_feed)
-            self._current_feed = float(parsed_feed)
+            self.current_feed = float(parsed_feed)
             
             
         if self.feed_override == True and self.request_feed:
@@ -275,11 +273,11 @@ class Preprocessor:
                 # strip the original F setting
                 self.line = re.sub(self._re_feed_replace, "", self.line)
                 
-            if self._current_feed != self.request_feed:
+            if self.current_feed != self.request_feed:
                 self.line += "F{:0.1f}".format(self.request_feed)
-                self._current_feed = self.request_feed
-                self.callback("on_log", "OVERRIDING FEED: " + str(self._current_feed))
-                self.callback("on_preprocessor_feed_change", self._current_feed)
+                self.current_feed = self.request_feed
+                self.callback("on_log", "OVERRIDING FEED: " + str(self.current_feed))
+                self.callback("on_preprocessor_feed_change", self.current_feed)
                 
 
     def _default_callback(self, status, *args):
