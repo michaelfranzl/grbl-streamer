@@ -958,6 +958,9 @@ class Gerbil:
         self._last_cwpos = self.cwpos
         
     def _calculate_eta(self):
+        if self._job_finished == True or self.preprocessor.current_feed == None:
+            return
+        
         mins = 0
         mins += (self.travel_dist_buffer["G0"] - self.travel_dist_current["G0"]) / (float(self.settings[110]["val"]))
         mins += (self.travel_dist_buffer["G1"] - self.travel_dist_current["G1"]) / self.preprocessor.current_feed
@@ -1024,7 +1027,7 @@ class Gerbil:
         while self._poll_keep_alive:
             self._counter += 1
             
-            if self._counter % (self.eta_calc_interval / self.poll_interval) == 0 and self.cmode == "Run":
+            if self._counter % (self.eta_calc_interval / self.poll_interval) == 0:
                 self._calculate_eta()
             
             if self.hash_state_requested:
