@@ -73,13 +73,17 @@ class Preprocessor:
         self._re_radius = re.compile(".*R([-.\d]+)")
         
         self._re_findall_vars = re.compile("#(\d)")
-        self._re_var_replace = re.compile(r"#\d")
+        #self._re_var_replace = re.compile(r"#\d")
         self._re_feed = re.compile(".*F([.\d]+)")
         self._re_feed_replace = re.compile(r"F[.\d]+")
         self._re_motion_mode = re.compile("(G[0123])([^\d]|$)")
         self._re_distance_mode = re.compile("(G9[01])([^\d]|$)")
         self._re_plane_mode = re.compile("(G1[789])([^\d]|$)")
         
+        # regex to remove all foreign comments except those
+        # specific to this library, which begin with _gerbil.
+        self._re_comment_bracket_replace = re.compile(r"\(.*?\)")
+        self._re_comment_semicolon_replace = re.compile(r";(?!_gerbil).*")
         
         
         
@@ -254,8 +258,9 @@ class Preprocessor:
         
         
     def _strip_comments(self):
-        # strip comments (after semicolon and opening parenthesis)
-        self.line = re.match("([^;(]*)", self.line).group(1)
+        # strip comments
+        self.line = re.sub(self._re_comment_bracket_replace, "", self.line)
+        self.line = re.sub(self._re_comment_semicolon_replace, "", self.line)
 
 
     def _strip(self):
@@ -356,6 +361,8 @@ class Preprocessor:
     """
     def mc_arc(self, position, target, offset, radius, axis_0, axis_1, axis_linear, is_clockwise_arc):
         gcode_list = []
+        gcode_list.append(";_gerbil.arc_begin:" + self.line)
+        gcode_list.append("G1")
         
         center_axis0 = position[axis_0] + offset[axis_0]
         center_axis1 = position[axis_1] + offset[axis_1]
@@ -395,18 +402,21 @@ class Preprocessor:
             position[axis_1] = center_axis1 + r_axis1;
             position[axis_linear] += linear_per_segment;
     
-            gcode_list.append("G1X{:0.3f}Y{:0.3f}Z{:0.3f}".format(position[0], position[1], position[2]))
+            gcode_list.append("X{:0.3f}Y{:0.3f}Z{:0.3f}".format(position[0], position[1], position[2]))
         
-        gcode_list.append("G1X{:0.3f}Y{:0.3f}Z{:0.3f}".format(target[0], target[1], target[2]))
+        gcode_list.append("X{:0.3f}Y{:0.3f}Z{:0.3f}".format(target[0], target[1], target[2]))
+        
+        gcode_list.append(";_gerbil.arc_end:" + self.line)
         
         return gcode_list
     
         
     def _fractionize_linear_motion(self):
         gcode_list = []
+        gcode_list.append(";_gerbil.line_begin:" + self.line)
+        gcode_list.append("G1")
         
         num_fractions = int(self.dist / self.fract_linear_segment_len)
-        gcode_list.append(self.current_motion_mode)
         
         for k in range(0, num_fractions):
             # render segments
@@ -417,11 +427,12 @@ class Preprocessor:
                 if self.current_distance_mode == "G90":
                     # absolute distances
                     diff += self.position[i]
-                if diff > 0:
+                if diff != 0:
                     txt += "{}{:0.3f}".format(self._axes_words[i], diff)
                     
             gcode_list.append(txt)
             
+        gcode_list.append(";_gerbil.line_end:" + self.line)
         return gcode_list
     
        
