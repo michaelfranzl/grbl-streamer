@@ -362,6 +362,11 @@ class Preprocessor:
     def mc_arc(self, position, target, offset, radius, axis_0, axis_1, axis_linear, is_clockwise_arc):
         gcode_list = []
         gcode_list.append(";_gerbil.arc_begin:" + self.line)
+        
+        if self.current_distance_mode == "G91":
+            # it's bad to concatenate many small floating point segments due to accumulating errors
+            gcode_list.append("G90")
+            
         gcode_list.append("G1")
         
         center_axis0 = position[axis_0] + offset[axis_0]
@@ -406,6 +411,7 @@ class Preprocessor:
         
         gcode_list.append("X{:0.3f}Y{:0.3f}Z{:0.3f}".format(target[0], target[1], target[2]))
         
+        gcode_list.append(self.current_distance_mode) # restore
         gcode_list.append(";_gerbil.arc_end:" + self.line)
         
         return gcode_list
@@ -423,12 +429,17 @@ class Preprocessor:
             txt = ""
             for i in range(0, 3):
                 # loop over X, Y, Z axes
-                diff = (k + 1) * self.dists[i] / num_fractions
+                segment_length = self.dists[i] / num_fractions
+                coord_rel = (k + 1) * segment_length
                 if self.current_distance_mode == "G90":
                     # absolute distances
-                    diff += self.position[i]
-                if diff != 0:
-                    txt += "{}{:0.3f}".format(self._axes_words[i], diff)
+                    coord_abs = self.position[i] + coord_rel
+                    if coord_rel != 0:
+                        # only output for changes
+                        txt += "{}{:0.3f}".format(self._axes_words[i], coord_abs)
+                else:
+                    # relative distances
+                    txt += "{}{:0.3f}".format(self._axes_words[i], segment_length)
                     
             gcode_list.append(txt)
             
@@ -466,9 +477,9 @@ class Preprocessor:
                     # calculate distance
                     self.dists[i] = self.target[i] - self.position[i]
                 else:
-                    # relative distances
-                    # TODO: TEST
+                    # G91 relative distances
                     self.dists[i] = float(m.group(1))
+                    self.target[i] += self.dists[i]
 
         
         
