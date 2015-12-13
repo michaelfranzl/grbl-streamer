@@ -35,25 +35,53 @@ class Preprocessor:
         self.vars = {}
         self.callback = self._default_callback
         self.logger.info("Preprocessor Class Initialized")
-        self.feed_override = False
+        
+        self.do_feed_override = False
+        self.do_fractionize = True
+        
+        self.fract_linear_threshold = 1
+        self.fract_linear_segment_len = 0.5
         
         self.request_feed = None
-        self.current_feed = None
+        self.feed_last = None
         
-        self._current_distance_mode = "G90"
-        self._current_motion_mode = None
+        # state information mirroring Grbl's
+        self.contains_feed = False
+        self.current_distance_mode = "G90"
+        self.current_motion_mode = "G0"
+        self.current_plane_mode = "G17"
+        self.position = [None, None, None] # current xyz position, i.e. self.target of last line
+        self.target = [None, None, None] # xyz target of current line
+        self.offset = [0, 0, 0] # offset of circle center from current xyz position
+        self.radius = False
+        self.dist = 0 # distance that current command will travel
+        self.dists = [0, 0, 0] # in xyz
         
-        self.pos = [None, None, None]
-        self._axes = ["X", "Y", "Z"]
-        self._regexps = []
+        # precompile regular expressions
+        self._axes_regexps = []
+        self._axes_words = ["X", "Y", "Z"]
         for i in range(0, 3):
-            axis = self._axes[i]
-            self._regexps.append(re.compile(".*" + axis + "([-.\d]+)"))
+            word = self._axes_words[i]
+            self._axes_regexps.append(re.compile(".*" + word + "([-.\d]+)"))
+            
+        self._offset_regexps = []
+        self._offset_words = ["I", "J", "K"]
+        for i in range(0, 3):
+            word = self._offset_words[i]
+            self._offset_regexps.append(re.compile(".*" + word + "([-.\d]+)"))
+            
+        self._re_radius = re.compile(".*R([-.\d]+)")
         
         self._re_findall_vars = re.compile("#(\d)")
         self._re_var_replace = re.compile(r"#\d")
         self._re_feed = re.compile(".*F([.\d]+)")
         self._re_feed_replace = re.compile(r"F[.\d]+")
+        self._re_motion_mode = re.compile("(G[0123])([^\d]|$)")
+        self._re_distance_mode = re.compile("(G9[01])([^\d]|$)")
+        self._re_plane_mode = re.compile("(G1[789])([^\d]|$)")
+        
+        
+        
         
     def job_new(self):
         """
@@ -61,12 +89,13 @@ class Preprocessor:
         """
         self.vars = {}
         
+        
     def onboot_init(self):
         """
         Call this after Grbl has booted. Mimics Grbl's internal state.
         """
-        self.current_feed = None # After boot, Grbl's feed is not set.
-        self.callback("on_preprocessor_feed_change", self.current_feed)
+        self.feed_last = None # After boot, Grbl's feed is not set.
+        self.callback("on_preprocessor_feed_change", self.feed_last)
         
     
     def set_vars(self, vars):
@@ -79,132 +108,100 @@ class Preprocessor:
         self.vars = vars
         
         
-    def tidy(self, line):
-        """
-        Strips G-Code not supported by Grbl, comments, and cleans up spaces in G-Code for slightly reduced serial bandwidth. Returns the tidy line.
-        
-        @param line
-        A single G-Code line
-        """
+    def set_line(self, line):
         self.line = line
+        
+        
+    def tidy(self):
+        """
+        Strips G-Code not supported by Grbl, comments, and cleans up spaces in G-Code for slightly reduced serial bandwidth. . Set line first with `set_line`. Returns the tidy line. 
+        """
         self._strip_comments()
         self._strip_unsupported()
         self._strip()
-        
         return self.line
     
     
-    def fractionize(self, line, threshold=1, segment_len=0.5):
-        """
-        Breaks lines longer than a certain threshold into shorter segments.
-        This is useful for faster response times when pausing the stream
-        as well as for the dynamic feed adjustment feature of gerbil.
-        
-        @param line
-        A single G-Code line as string
-        
-        @param threshold
-        Maximum line length that will not be fractionized
-        
-        @param segment_len
-        Segment length of the fractionized line (approx. value)
-        """
-        result = []
-        
+    def parse_state(self):
         # parse G0 .. G3 and remember
-        m = re.match("(G[0123])([^\d]|$)", line)
-        if m:
-            self._current_motion_mode = m.group(1)
-            #print("MOTION MODE DETECTED %s" % self._current_motion_mode)
+        m = re.match(self._re_motion_mode, self.line)
+        if m: self.current_motion_mode = m.group(1)
         
         # parse G90 and G91 and remember
-        m = re.match("(G9[01])([^\d]|$)", line)
+        m = re.match(self._re_distance_mode, self.line)
+        if m: self.current_distance_mode = m.group(1)
+            
+        # parse G17, G18 and G19 and remember
+        m = re.match(self._re_plane_mode, self.line)
+        if m: self.current_plane_mode = m.group(1)
+            
+        # see if current line has F
+        m = re.match(self._re_feed, self.line)
+        self.contains_feed = True if m else False
         if m:
-            self._current_distance_mode = m.group(1)
-            #print("DISTANCE MODE DETECTED %s" % self._current_distance_mode)
-            
+            self.feed_current = float(m.group(1))
+        
+        self._parse_distance_values()
+        
+        # calculate travelling distance
+        self.dist = math.sqrt(self.dists[0] * self.dists[0] + self.dists[1] * self.dists[1] + self.dists[2] * self.dists[2])
+        
+        
+        
+    
+    
+    def fractionize(self):
+        """
+        Breaks lines longer than a certain threshold into shorter segments.
+        
+        Also breaks circles into segments.
+        
+        This is useful for faster response times when stopping the stream
+        as well as for the dynamic feed adjustment feature of gerbil.
+        """
+        result = []
 
-        # Parse the G-Code line, remember positions,
-        # and calculate distance from last position
-        
-        pos_curr = [None, None, None] # end position of this G-Code cmd
-        dist_curr = [0, 0, 0] # distance traveled by this G-Code cmd
-        
-        for i in range(0, 3):
-            # loop over X, Y, Z axes
-            axis = self._axes[i]
-            regexp = self._regexps[i]
+        if self.do_fractionize != True:
+            result = [self.line]
             
-            m = re.match(regexp, line)
-            if m:
-                if self._current_distance_mode == "G90":
-                    # absolute distances
-                    pos_curr[i] = float(m.group(1))
-                    if self.pos[i] == None:
-                        # remember this as last position
-                        self.pos[i] = pos_curr[i]
-                    # calculate distance
-                    dist_curr[i] = pos_curr[i] - self.pos[i]
-                else:
-                    # relative distances
-                    dist_curr[i] = float(m.group(1))
-
-        length = math.sqrt(dist_curr[0] * dist_curr[0] + dist_curr[1] * dist_curr[1] + dist_curr[2] * dist_curr[2])
-        
-        if self._current_motion_mode == "G1" and length > threshold:
-            # this line can be fractionized
-            num_fractions = int(length/segment_len)
-            result.append(self._current_motion_mode)
-            for k in range(0, num_fractions):
-                # render segments
-                txt = ""
-                for i in range(0, 3):
-                    # loop over X, Y, Z axes
-                    diff = (k + 1) * dist_curr[i] / num_fractions
-                    if self._current_distance_mode == "G90":
-                        # absolute distances
-                        diff += self.pos[i]
-                    if diff > 0:
-                        txt += "{}{:0.3f}".format(self._axes[i], diff)
-                        
-                result.append(txt)
+        elif self.current_motion_mode == "G1" and self.dist > self.fract_linear_threshold:
+            result = self._fractionize_linear_motion()
+           
+        elif self.current_motion_mode == "G2" or self.current_motion_mode == "G3":
+            result = self._fractionize_circular_motion()
             
         else:
-            # this line cannot be fractionized
+            # this motion cannot be fractionized
             # return the line as it was passed in
-            result = [line]
+            result = [self.line]
 
+        return result
+    
+    
+    def done(self):
         # remember last pos
+        if not (self.current_motion_mode == "G0" or self.current_motion_mode == "G1"):
+            # only G1 and G2 can stay active
+            self.current_motion_mode = None 
+            
         for i in range(0, 3):
             # loop over X, Y, Z axes
-            if pos_curr[i] != None:
-                self.pos[i] = pos_curr[i]
-                
-        #print("STATUS: pos={0} len={1} pos_curr={2} dist_curr={3}".format(self.pos, length, pos_curr, dist_curr))
-                
-        return result, length, self._current_motion_mode, self.current_feed
+            if self.target[i] != None:
+                self.position[i] = self.target[i]
     
-    
-    def find_vars(self, line):
+    def find_vars(self):
         """
         Parses all #1, #2, etc. variables in a G-Code line and populates the internal `vars` dict. After this function is done, the dict will not have any values set.
-        
-        @param line
-        A single G-Code line
         """
         keys = re.findall(self._re_findall_vars, self.line)
         for key in keys:
             self.vars[key] = None
         
         
-    def substitute_vars(self, line):
+    def substitute_vars(self):
         """
         Does actual #1, #2, etc. variable substitution based on the values previously stored in the `vars` dict. When a variable is to be substituted but no substitution value has been set previously in the `vars` dict, a callback "on_preprocessor_var_undefined" will be made and no substitution done. If this happens, it is an User error and the stream should be stopped.
-        
-        @param line
-        A single G-Code line
         """
-        self.line = line
         keys = re.findall(self._re_findall_vars, self.line)
         
         for key in keys:
@@ -223,15 +220,27 @@ class Preprocessor:
         return self.line
     
         
-    def handle_feed(self, line):
+    def override_feed(self):
         """
-        Optionally does dynamic feed override.
-        
-        @param line
-        A single G-Code line
+        Optionally overrides feed dynamically. Set line first with `set_line`
         """
-        self.line = line
-        self._handle_feed()
+        if self.do_feed_override == False and self.contains_feed:
+            # Simiply update the UI for detected feed
+            if self.feed_last != self.feed_current:
+                self.callback("on_preprocessor_feed_change", self.feed_current)
+            self.feed_last = self.feed_current
+            
+            
+        if self.do_feed_override == True and self.request_feed:
+            if self.contains_feed:
+                # strip the original F setting
+                self.line = re.sub(self._re_feed_replace, "", self.line)
+                
+            if self.feed_last != self.request_feed:
+                self.line += "F{:0.1f}".format(self.request_feed)
+                self.feed_last = self.request_feed
+                self.callback("on_log", "OVERRIDING FEED: " + str(self.feed_last))
+                self.callback("on_preprocessor_feed_change", self.feed_last)
         return self.line
     
     
@@ -247,38 +256,214 @@ class Preprocessor:
     def _strip_comments(self):
         # strip comments (after semicolon and opening parenthesis)
         self.line = re.match("([^;(]*)", self.line).group(1)
-        #self.line += ""
 
 
     def _strip(self):
         # Remove blank spaces and newlines from beginning and end, and remove blank spaces from the middle of the line.
         self.line = self.line.strip()
         self.line = self.line.replace(" ", "")
-
-   
-    def _handle_feed(self):
-        match = re.match(self._re_feed, self.line)
-        contains_feed = True if match else False
         
-        if self.feed_override == False and contains_feed:
-            # Simiply update the UI for detected feed
-            parsed_feed = float(match.group(1))
-            if self.current_feed != parsed_feed:
-                self.callback("on_preprocessor_feed_change", parsed_feed)
-            self.current_feed = float(parsed_feed)
+        
+    """
+    This function is a direct port of Grbl's C code into Python (gcode.c)
+    with slight refactoring for Python by Michael Franzl.
+    This function is copyright (c) Sungeun K. Jeon under GNU General Public License 3
+    """
+    def _fractionize_circular_motion(self):
+        # implies self.current_motion_mode == "G2" or self.current_motion_mode == "G3"
+        
+        if self.current_plane_mode == "G17":
+            axis_0 = 0 # X axis
+            axis_1 = 1 # Y axis
+            axis_linear = 2 # Z axis
+        elif self.current_plane_mode == "G18":
+            axis_0 = 2 # Z axis
+            axis_1 = 0 # X axis
+            axis_linear = 1 # Y axis
+        elif self.current_plane_mode == "G19":
+            axis_0 = 1 # Y axis
+            axis_1 = 2 # Z axis
+            axis_linear = 0 # X axis
             
+        is_clockwise_arc = True if self.current_motion_mode == "G2" else False
             
-        if self.feed_override == True and self.request_feed:
-            if contains_feed:
-                # strip the original F setting
-                self.line = re.sub(self._re_feed_replace, "", self.line)
+        # deltas between target and (current) position
+        x = self.target[axis_0] - self.position[axis_0]
+        y = self.target[axis_1] - self.position[axis_1]
+        
+        if self.contains_radius:
+            # RADIUS MODE
+            # R given, no IJK given, self.offset must be calculated
+            
+            if self.target == self.position:
+                self.logger.error("Arc in Radius Mode: Identical start/end")
+                return [self.line]
+            
+            h_x2_div_d = 4.0 * self.radius * self.radius - x * x - y * y;
+            
+            if h_x2_div_d < 0:
+                self.logger.error("Arc in Radius Mode: Radius error")
+                return [self.line]
+
+            # Finish computing h_x2_div_d.
+            h_x2_div_d = -math.sqrt(h_x2_div_d) / math.sqrt(x * x + y * y);
+            
+            if not is_clockwise_arc:
+                h_x2_div_d = -h_x2_div_d
+    
+            if self.radius < 0:
+                h_x2_div_d = -h_x2_div_d; 
+                self.radius = -self.radius;
                 
-            if self.current_feed != self.request_feed:
-                self.line += "F{:0.1f}".format(self.request_feed)
-                self.current_feed = self.request_feed
-                self.callback("on_log", "OVERRIDING FEED: " + str(self.current_feed))
-                self.callback("on_preprocessor_feed_change", self.current_feed)
+            self.offset[axis_0] = 0.5*(x-(y*h_x2_div_d))
+            self.offset[axis_1] = 0.5*(y+(x*h_x2_div_d))
+            
+        else:
+            # CENTER OFFSET MODE, no R given so must be calculated
+            
+            if self.offset[axis_0] == None or self.offset[axis_1] == None:
+                self.logger.error("Arc in Offset Mode: No offsets in plane")
+                return [self.line]
+            
+            # Arc radius from center to target
+            x -= self.offset[axis_0]
+            y -= self.offset[axis_1]
+            target_r = math.sqrt(x * x + y * y)
+            
+            # Compute arc radius for mc_arc. Defined from current location to center.
+            self.radius = math.sqrt(self.offset[axis_0] * self.offset[axis_0] + self.offset[axis_1] * self.offset[axis_1])
+            
+            # Compute difference between current location and target radii for final error-checks.
+            delta_r = math.fabs(target_r - self.radius);
+            if delta_r > 0.005:
+                if delta_r > 0.5:
+                    self.logger.error("Arc in Offset Mode: Invalid Target. r={:f} delta_r={:f}".format(self.radius, delta_r))
+                    return [self.line]
+                if delta_r > (0.001 * self.radius):
+                    self.logger.error("Arc in Offset Mode: Invalid Target. r={:f} delta_r={:f}".format(self.radius, delta_r))
+                    return [self.line]
+        
+        print(self.position, self.target, self.offset, self.radius, axis_0, axis_1, axis_linear, is_clockwise_arc)
+        
+        gcode_list = self.mc_arc(self.position, self.target, self.offset, self.radius, axis_0, axis_1, axis_linear, is_clockwise_arc)
+        
+        return gcode_list
+        
+    """
+    This function is a direct port of Grbl's C code into Python (motion_control.c)
+    with slight refactoring for Python by Michael Franzl.
+    This function is copyright (c) Sungeun K. Jeon under GNU General Public License 3
+    """
+    def mc_arc(self, position, target, offset, radius, axis_0, axis_1, axis_linear, is_clockwise_arc):
+        gcode_list = []
+        
+        center_axis0 = position[axis_0] + offset[axis_0]
+        center_axis1 = position[axis_1] + offset[axis_1]
+        # radius vector from center to current location
+        r_axis0 = -offset[axis_0]
+        r_axis1 = -offset[axis_1]
+        # radius vector from target to center
+        rt_axis0 = target[axis_0] - center_axis0
+        rt_axis1 = target[axis_1] - center_axis1
+        
+        angular_travel = math.atan2(r_axis0 * rt_axis1 - r_axis1 * rt_axis0, r_axis0 * rt_axis0 + r_axis1 * rt_axis1)
+        
+        arc_tolerance = 0.004
+        arc_angular_travel_epsilon = 0.0000005
+        
+        if is_clockwise_arc: # Correct atan2 output per direction
+            if angular_travel >= -arc_angular_travel_epsilon: angular_travel -= 2*math.pi
+        else:
+            if angular_travel <= arc_angular_travel_epsilon: angular_travel += 2*math.pi
+            
+       
+            
+        segments = math.floor(math.fabs(0.5 * angular_travel * radius) / math.sqrt(arc_tolerance * (2 * radius - arc_tolerance)))
+        
+        #print("angular_travel:{:f}, radius:{:f}, arc_tolerance:{:f}, segments:{:d}".format(angular_travel, radius, arc_tolerance, segments))
+        
+        theta_per_segment = angular_travel / segments
+        linear_per_segment = (target[axis_linear] - position[axis_linear]) / segments
+        
+        for i in range(1, segments):
+            cos_Ti = math.cos(i * theta_per_segment);
+            sin_Ti = math.sin(i * theta_per_segment);
+            r_axis0 = -offset[axis_0] * cos_Ti + offset[axis_1] * sin_Ti;
+            r_axis1 = -offset[axis_0] * sin_Ti - offset[axis_1] * cos_Ti;
+        
+            position[axis_0] = center_axis0 + r_axis0;
+            position[axis_1] = center_axis1 + r_axis1;
+            position[axis_linear] += linear_per_segment;
+    
+            gcode_list.append("G1X{:0.3f}Y{:0.3f}Z{:0.3f}".format(position[0], position[1], position[2]))
+        
+        gcode_list.append("G1X{:0.3f}Y{:0.3f}Z{:0.3f}".format(target[0], target[1], target[2]))
+        
+        return gcode_list
+    
+        
+    def _fractionize_linear_motion(self):
+        gcode_list = []
+        
+        num_fractions = int(self.dist / self.fract_linear_segment_len)
+        gcode_list.append(self.current_motion_mode)
+        
+        for k in range(0, num_fractions):
+            # render segments
+            txt = ""
+            for i in range(0, 3):
+                # loop over X, Y, Z axes
+                diff = (k + 1) * self.dists[i] / num_fractions
+                if self.current_distance_mode == "G90":
+                    # absolute distances
+                    diff += self.position[i]
+                if diff > 0:
+                    txt += "{}{:0.3f}".format(self._axes_words[i], diff)
+                    
+            gcode_list.append(txt)
+            
+        return gcode_list
+    
+       
+    def _parse_distance_values(self):
+        #self.target = self.position
+        
+        if self.current_motion_mode == "G2" or self.current_motion_mode == "G3":
+            self.offset = [None, None, None]
+            for i in range(0, 3):
+                # loop over I, J, K offsets
+                regexp = self._offset_regexps[i]
                 
+                m = re.match(regexp, self.line)
+                if m: self.offset[i] = float(m.group(1))
+                    
+            m = re.match(self._re_radius, self.line)
+            self.contains_radius = True if m else False
+            if m: self.radius = float(m.group(1))
+                
+                
+        self.dists = [0, 0, 0] # distance traveled by this G-Code cmd in xyz
+        for i in range(0, 3):
+            # loop over X, Y, Z axes
+            regexp = self._axes_regexps[i]
+            
+            m = re.match(regexp, self.line)
+            if m:
+                if self.current_distance_mode == "G90":
+                    # absolute distances
+                    self.target[i] = float(m.group(1))
+                    # calculate distance
+                    self.dists[i] = self.target[i] - self.position[i]
+                else:
+                    # relative distances
+                    # TODO: TEST
+                    self.dists[i] = float(m.group(1))
+
+        
+        
+            
+        
+    
 
     def _default_callback(self, status, *args):
         print("PREPROCESSOR DEFAULT CALLBACK", status, args)

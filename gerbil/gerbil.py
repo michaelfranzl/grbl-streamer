@@ -62,7 +62,7 @@ class Gerbil:
     
     on_log
     : Emitted for informal logging or debugging messages.
-    : 1 argument: message_string
+    : 1 argument: LogRecord instance
     
     on_line_sent
     : Emitted whenever a line is actually sent to Grbl.
@@ -376,11 +376,11 @@ class Gerbil:
             self._ifacepath = path
         
         if self._iface == None:
-            self.logger.info("{}: Setting up interface on {}".format(self.name, self._ifacepath))
+            self.logger.debug("{}: Setting up interface on {}".format(self.name, self._ifacepath))
             self._iface = Interface("iface_" + self.name, self._ifacepath, 115200)
             self._iface.start(self._queue)
         else:
-            self.logger.info("{}: Cannot start another interface. There is already an interface {}. This should not have happened.".format(self.name, self._iface))
+            self.logger.info("{}: Cannot start another interface. There is already an interface {}.".format(self.name, self._iface))
             
         self._iface_read_do = True
         self._thread_read_iface = threading.Thread(target=self._onread)
@@ -405,11 +405,11 @@ class Gerbil:
         self._iface.stop()
         self._iface = None
         
-        self.logger.info("{}: Please wait until reading thread has joined...".format(self.name))
+        self.logger.debug("{}: Please wait until reading thread has joined...".format(self.name))
         self._iface_read_do = False
         self._queue.put("dummy_msg_for_joining_thread")
         self._thread_read_iface.join()
-        self.logger.info("{}: Reading thread successfully joined.".format(self.name))
+        self.logger.debug("{}: Reading thread successfully joined.".format(self.name))
         
         self.connected = False
         
@@ -474,9 +474,9 @@ class Gerbil:
         if self._thread_polling == None:
             self._thread_polling = threading.Thread(target=self._poll_state)
             self._thread_polling.start()
-            self.logger.info("{}: Polling thread started".format(self.name))
+            self.logger.debug("{}: Polling thread started".format(self.name))
         else:
-            self.logger.info("{}: Polling thread already running...".format(self.name))
+            self.logger.debug("{}: Polling thread already running...".format(self.name))
             
         
     def poll_stop(self):
@@ -486,11 +486,11 @@ class Gerbil:
         if self.is_connected() == False: return
         if self._thread_polling != None:
             self._poll_keep_alive = False
-            self.logger.info("{}: Please wait until polling thread has joined...".format(self.name))
+            self.logger.debug("{}: Please wait until polling thread has joined...".format(self.name))
             self._thread_polling.join()
-            self.logger.info("{}: Polling thread has successfully  joined...".format(self.name))
+            self.logger.debug("{}: Polling thread has successfully  joined...".format(self.name))
         else:
-            self.logger.info("{}: Cannot start a polling thread. Another one is already running.".format(self.name))
+            self.logger.debug("{}: Cannot start a polling thread. Another one is already running.".format(self.name))
             
         self._thread_polling = None
 
@@ -505,7 +505,7 @@ class Gerbil:
         requested feed by calling `self.request_feed()` one or many
         times.
         """
-        self.preprocessor.feed_override = val
+        self.preprocessor.do_feed_override = val
         
         
     def request_feed(self, requested_feed):
@@ -548,7 +548,7 @@ class Gerbil:
         self._incremental_streaming = onoff
         if self._incremental_streaming == True:
             self._wait_empty_buffer = True
-        self.logger.info("{}: Incremental streaming set to {}".format(self.name, self._incremental_streaming))
+        self.logger.debug("{}: Incremental streaming set to {}".format(self.name, self._incremental_streaming))
         
         
     def send_immediately(self, line):
@@ -567,8 +567,10 @@ class Gerbil:
         A string of a single G-Code command to be sent. Doesn't have to
         be \n terminated.
         """
-        line = self.preprocessor.tidy(line)
-        line = self.preprocessor.handle_feed(line)
+        self.preprocessor.set_line(line)
+        self.preprocessor.parse_state()
+        line = self.preprocessor.override_feed()
+        self.preprocessor.done()
         self._iface_write(line + "\n")
         
         
@@ -614,7 +616,7 @@ class Gerbil:
         A string giving the relative or absolute file path
         """
         if self._job_finished == False:
-            self.logger.info("{}: Job must be finished before you can load a file".format(self.name))
+            self.logger.warning("{}: Job must be finished before you can load a file".format(self.name))
             return
         
         self.job_new()
@@ -633,7 +635,7 @@ class Gerbil:
         buffer position (`self.current_line_number`). If `linenr` is specified, start streaming from this line.
         """
         if self._buffer_size == 0:
-            self.logger.info("{}: Nothing in the buffer!".format(self.name))
+            self.logger.warning("{}: Cannot run job. Nothing in the buffer!".format(self.name))
             return
         
         if linenr:
@@ -740,7 +742,7 @@ class Gerbil:
 
     def _preprocessor_callback(self, event, *data):
         if event == "on_preprocessor_var_undefined":
-            self.logger.info("HALTED JOB BECAUSE UNDEFINED VAR {}".format(data[0]))
+            self.logger.critical("HALTED JOB BECAUSE UNDEFINED VAR {}".format(data[0]))
             self._set_streaming_src_end_reached(True)
             self.job_halt()
         else:
@@ -781,6 +783,7 @@ class Gerbil:
             else:
                 break
 
+
     def _set_next_line(self):
         progress_percent = int(100 * self._current_line_nr / self._buffer_size)
         self._callback("on_progress_percent", progress_percent)
@@ -788,17 +791,19 @@ class Gerbil:
         if self._current_line_nr < self._buffer_size:
             # still something in _buffer, pop it
             line = self._buffer[self._current_line_nr].strip()
-            line = self.preprocessor.handle_feed(line)
-            line = self.preprocessor.substitute_vars(line)
-            lines, travel_dist, motion_mode, feed = self.preprocessor.fractionize(line)
+            self.preprocessor.set_line(line)
+            self.preprocessor.parse_state()
+            self.preprocessor.override_feed()
+            self.preprocessor.substitute_vars()
+            cmm = self.preprocessor.current_motion_mode
+            if cmm == "G0" or cmm == "G1":
+                self.travel_dist_current[cmm] += self.preprocessor.dist
+            
             self._current_line = line
             self._current_line_sent = False
             self._current_line_nr += 1
             
-            # note that `lines` is discarded here. We only need the travel distance
-            # which is a nice side product of the fractionize function
-            if motion_mode == "G0" or motion_mode == "G1":
-                self.travel_dist_current[motion_mode] += travel_dist
+            self.preprocessor.done()
 
         else:
             # the buffer is empty, nothing more to read
@@ -907,7 +912,7 @@ class Gerbil:
     def _on_bootup(self):
         self._onboot_init()
         self.connected = True
-        self.logger.info("{}: Booted!".format(self.name))
+        self.logger.debug("{}: Grbl has booted!".format(self.name))
         self._callback("on_boot")
         
     def _update_hash_state(self, line):
@@ -935,7 +940,7 @@ class Gerbil:
             self.gps[11] = m.group(12) # current rpm
             self._callback("on_gcode_parser_stateupdate", self.gps)
         else:
-            self.logger.info("{}: Could not parse gcode parser report: '{}'".format(self.name, line))
+            self.logger.error("{}: Could not parse gcode parser report: '{}'".format(self.name, line))
         
     def _update_state(self, line):
         m = re.match("<(.*?),MPos:(.*?),WPos:(.*?)>", line)
@@ -944,6 +949,11 @@ class Gerbil:
         wpos_parts = m.group(3).split(",")
         self.cmpos = (float(mpos_parts[0]), float(mpos_parts[1]), float(mpos_parts[2]))
         self.cwpos = (float(wpos_parts[0]), float(wpos_parts[1]), float(wpos_parts[2]))
+        
+        if self.cmode == "Idle":
+            # keep preprocessor informed about current working pos
+            self.preprocessor.position = list(self.cwpos)
+            self.preprocessor.target = list(self.cwpos)
 
         if (self.cmode != self._last_cmode or
             self.cmpos != self._last_cmpos or
@@ -958,32 +968,38 @@ class Gerbil:
         self._last_cwpos = self.cwpos
         
     def _calculate_eta(self):
-        if self._job_finished == True or self.preprocessor.current_feed == None:
+        if self._job_finished == True or self.preprocessor.feed_last == None:
             return
         
         mins = 0
         mins += (self.travel_dist_buffer["G0"] - self.travel_dist_current["G0"]) / (float(self.settings[110]["val"]))
-        mins += (self.travel_dist_buffer["G1"] - self.travel_dist_current["G1"]) / self.preprocessor.current_feed
+        mins += (self.travel_dist_buffer["G1"] - self.travel_dist_current["G1"]) / self.preprocessor.feed_last
 
         self._callback("on_eta_change", mins * 60)
 
         
     def _load_line_into_buffer(self, line):
-        line = self.preprocessor.tidy(line)
-        line = self.preprocessor.handle_feed(line)
-        lines, travel_dist, motion_mode, feed = self.preprocessor.fractionize(line)
+        self.preprocessor.set_line(line)
+        self.preprocessor.parse_state()
+        self.preprocessor.tidy()
+        self.preprocessor.override_feed()
+        self.preprocessor.find_vars()
+        lines = self.preprocessor.fractionize()
+        self.preprocessor.done()
+        travel_dist = self.preprocessor.dist
         
-        if feed != None and (motion_mode == "G0" or motion_mode == "G1"):
-            self.travel_dist_buffer[motion_mode] += travel_dist
-            if motion_mode == "G0":
+        cf = self.preprocessor.feed_last
+        cmm = self.preprocessor.current_motion_mode
+        if cf != None and (cmm == "G0" or cmm == "G1"):
+            self.travel_dist_buffer[cmm] += self.preprocessor.dist
+            if cmm == "G0":
                 # based on x max rate
                 self.eta += travel_dist / float(self.settings[110]["val"]) * 60
             else:
-                self.eta += travel_dist / feed * 60
+                self.eta += travel_dist / cf * 60
             
         for line in lines:
             if line != "":
-                self.preprocessor.find_vars(line)
                 self._buffer.append(line)
                 self._buffer_size += 1
         
@@ -997,7 +1013,8 @@ class Gerbil:
         
     def is_connected(self):
         if self.connected != True:
-            self.logger.info("{}: Not yet connected".format(self.name))
+            #self.logger.info("{}: Not yet connected".format(self.name))
+            pass
         return self.connected
     
     def _onboot_init(self):
@@ -1021,7 +1038,8 @@ class Gerbil:
             junk = self._queue.get_nowait()
             self.logger.debug("Discarding junk %s", junk)
         except:
-            self.logger.debug("Queue was empty")
+            #self.logger.debug("Queue was empty")
+            pass
 
     def _poll_state(self):
         while self._poll_keep_alive:
@@ -1042,7 +1060,8 @@ class Gerbil:
                 self._get_state()
                 
             time.sleep(self.poll_interval)
-        self.logger.info("{}: Polling has been stopped".format(self.name))
+            
+        self.logger.debug("{}: Polling has been stopped".format(self.name))
 
     def _get_state(self):
         self._iface.write("?")
@@ -1055,7 +1074,7 @@ class Gerbil:
 
     def _set_streaming_src_end_reached(self, a):
         self._streaming_src_end_reached = a
-        self.logger.info("{}: Streaming source end reached: {}".format(self.name, a))
+        #self.logger.info("{}: Streaming source end reached: {}".format(self.name, a))
 
     def _set_streaming_complete(self, a):
         self._streaming_complete = a
