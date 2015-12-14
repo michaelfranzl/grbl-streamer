@@ -301,13 +301,13 @@ class Preprocessor:
             # R given, no IJK given, self.offset must be calculated
             
             if self.target == self.position:
-                self.logger.error("Arc in Radius Mode: Identical start/end")
+                self.logger.error("Arc in Radius Mode: Identical start/end {}".format(self.line))
                 return [self.line]
             
             h_x2_div_d = 4.0 * self.radius * self.radius - x * x - y * y;
             
             if h_x2_div_d < 0:
-                self.logger.error("Arc in Radius Mode: Radius error")
+                self.logger.error("Arc in Radius Mode: Radius error {}".format(self.line))
                 return [self.line]
 
             # Finish computing h_x2_div_d.
@@ -342,10 +342,10 @@ class Preprocessor:
             delta_r = math.fabs(target_r - self.radius);
             if delta_r > 0.005:
                 if delta_r > 0.5:
-                    self.logger.error("Arc in Offset Mode: Invalid Target. r={:f} delta_r={:f}".format(self.radius, delta_r))
+                    self.logger.error("Arc in Offset Mode: Invalid Target. r={:f} delta_r={:f} {}".format(self.radius, delta_r, self.line))
                     return [self.line]
                 if delta_r > (0.001 * self.radius):
-                    self.logger.error("Arc in Offset Mode: Invalid Target. r={:f} delta_r={:f}".format(self.radius, delta_r))
+                    self.logger.error("Arc in Offset Mode: Invalid Target. r={:f} delta_r={:f} {}".format(self.radius, delta_r, self.line))
                     return [self.line]
         
         print(self.position, self.target, self.offset, self.radius, axis_0, axis_1, axis_linear, is_clockwise_arc)
@@ -406,7 +406,7 @@ class Preprocessor:
             position[axis_0] = center_axis0 + r_axis0;
             position[axis_1] = center_axis1 + r_axis1;
             position[axis_linear] += linear_per_segment;
-    
+
             gcode_list.append("X{:0.3f}Y{:0.3f}Z{:0.3f}".format(position[0], position[1], position[2]))
         
         gcode_list.append("X{:0.3f}Y{:0.3f}Z{:0.3f}".format(target[0], target[1], target[2]))
