@@ -54,7 +54,13 @@ class Preprocessor:
         self.position = [None, None, None] # current xyz position, i.e. self.target of last line
         self.target = [None, None, None] # xyz target of current line
         self.offset = [0, 0, 0] # offset of circle center from current xyz position
-        self.radius = False
+        
+        self.radius = None
+        self.contains_radius = False
+        
+        self.spindle = None
+        self.contains_spindle = False
+        
         self.dist = 0 # distance that current command will travel
         self.dists = [0, 0, 0] # in xyz
         
@@ -72,6 +78,7 @@ class Preprocessor:
             self._offset_regexps.append(re.compile(".*" + word + "([-.\d]+)"))
             
         self._re_radius = re.compile(".*R([-.\d]+)")
+        self._re_spindle = re.compile(".*S([-.\d]+)")
         
         self._re_findall_vars = re.compile("#(\d)")
         #self._re_var_replace = re.compile(r"#\d")
@@ -413,9 +420,16 @@ class Preprocessor:
                 position[axis_1] = center_axis1 + r_axis1;
                 position[axis_linear] += linear_per_segment;
 
-                gcode_list.append("X{:0.3f}Y{:0.3f}Z{:0.3f}".format(position[0], position[1], position[2]))
+                txt = "X{:0.3f}Y{:0.3f}Z{:0.3f}".format(position[0], position[1], position[2])
+                if self.contains_spindle:
+                    txt += "S{:d}".format(self.spindle)
+                gcode_list.append(txt)
             
-        gcode_list.append("X{:0.3f}Y{:0.3f}Z{:0.3f}".format(target[0], target[1], target[2]))
+        
+        txt = "X{:0.3f}Y{:0.3f}Z{:0.3f}".format(target[0], target[1], target[2])
+        if self.contains_spindle:
+            txt += "S{:d}".format(self.spindle)
+        gcode_list.append(txt)
         
         gcode_list.append(self.current_distance_mode) # restore
         gcode_list.append(";_gerbil.arc_end:" + self.line)
@@ -468,6 +482,10 @@ class Preprocessor:
             m = re.match(self._re_radius, self.line)
             self.contains_radius = True if m else False
             if m: self.radius = float(m.group(1))
+            
+            m = re.match(self._re_spindle, self.line)
+            self.contains_spindle = True if m else False
+            if m: self.spindle = int(m.group(1))
                 
                 
         self.dists = [0, 0, 0] # distance traveled by this G-Code cmd in xyz
