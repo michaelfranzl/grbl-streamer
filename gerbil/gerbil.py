@@ -567,6 +567,10 @@ class Gerbil:
         A string of a single G-Code command to be sent. Doesn't have to
         be \n terminated.
         """
+        if self._rx_buffer_fill_percent > 0:
+            self.logger.error("Will not send. Firmware buffer is {:d} percent full.".format(self._rx_buffer_fill_percent))
+            return
+        
         self.preprocessor.set_line(line)
         self.preprocessor.parse_state()
         line = self.preprocessor.override_feed()
@@ -815,6 +819,12 @@ class Gerbil:
             self._set_streaming_src_end_reached(True)
 
     def _send_current_line(self):
+        if self._error:
+            self.logger.error("Firmware reported error. Halting.")
+            self._set_streaming_src_end_reached(True)
+            self._set_streaming_complete(True)
+            return
+        
         self._set_streaming_complete(False)
         line_length = len(self._current_line) + 1 # +1 for \n which we will append below
         self._rx_buffer_fill.append(line_length) 
@@ -833,7 +843,7 @@ class Gerbil:
         if len(self._rx_buffer_fill) > 0:
             self._rx_buffer_fill.pop(0)
             processed_command = self._rx_buffer_backlog.pop(0)
-            ln = self._rx_buffer_backlog_line_number.pop(0)
+            ln = self._rx_buffer_backlog_line_number.pop(0) - 1
             self._callback("on_processed_command", ln, processed_command)
         
         if self._streaming_src_end_reached == True and len(self._rx_buffer_fill) == 0:
@@ -876,11 +886,13 @@ class Gerbil:
                     #self.logger.debug("%s: _rx_buffer_backlog at time of error: %s", self.name,  self._rx_buffer_backlog)
                     if len(self._rx_buffer_backlog) > 0:
                         problem_command = self._rx_buffer_backlog[0]
-                        problem_line = self._rx_buffer_backlog_line_number[0]
+                        problem_line = self._rx_buffer_backlog_line_number[0] - 1
                     else:
                         problem_command = "unknown"
                         problem_line = -1
                     self._callback("on_error", line, problem_command, problem_line)
+                    self._set_streaming_complete(True)
+                    self._set_streaming_src_end_reached(True)
                     
                 elif "Grbl " in line:
                     self._callback("on_read", line)

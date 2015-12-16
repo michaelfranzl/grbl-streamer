@@ -136,10 +136,6 @@ class Preprocessor:
     
     
     def parse_state(self):
-        stripped = re.sub(self._re_comment_all_replace, "", self.line).strip()
-        if stripped == "":
-            return
-        
         # parse G0 .. G3 and remember
         m = re.match(self._re_motion_mode, self.line)
         if m: self.current_motion_mode = int(m.group(1))
@@ -271,6 +267,7 @@ class Preprocessor:
         
     def _strip_comments(self):
         # strip comments
+        #self.line = re.sub(_re_comment_all_replace, "", self.line)
         self.line = re.sub(self._re_comment_bracket_replace, "", self.line)
         self.line = re.sub(self._re_comment_other_replace, "", self.line)
 
@@ -373,13 +370,14 @@ class Preprocessor:
     """
     def mc_arc(self, position, target, offset, radius, axis_0, axis_1, axis_linear, is_clockwise_arc):
         gcode_list = []
-        gcode_list.append(";_gerbil.arc_begin:" + self.line)
+        gcode_list.append(";_gerbil.arc_begin")
         
+        do_restore_distance_mode = False
         if self.current_distance_mode == "G91":
             # it's bad to concatenate many small floating point segments due to accumulating errors
+            # each arc will use G90
+            do_restore_distance_mode = True
             gcode_list.append("G90")
-            
-        gcode_list.append("G1")
         
         center_axis0 = position[axis_0] + offset[axis_0]
         center_axis1 = position[axis_1] + offset[axis_1]
@@ -406,10 +404,12 @@ class Preprocessor:
         
         #print("angular_travel:{:f}, radius:{:f}, arc_tolerance:{:f}, segments:{:d}".format(angular_travel, radius, arc_tolerance, segments))
         
+        words = ["X", "Y", "Z"]
         if segments:
             theta_per_segment = angular_travel / segments
             linear_per_segment = (target[axis_linear] - position[axis_linear]) / segments
             
+            position_last = [None, None, None]
             for i in range(1, segments):
                 cos_Ti = math.cos(i * theta_per_segment);
                 sin_Ti = math.sin(i * theta_per_segment);
@@ -420,33 +420,64 @@ class Preprocessor:
                 position[axis_1] = center_axis1 + r_axis1;
                 position[axis_linear] += linear_per_segment;
 
-                txt = "X{:0.3f}Y{:0.3f}Z{:0.3f}".format(position[0], position[1], position[2])
-                if self.contains_spindle:
-                    txt += "S{:d}".format(self.spindle)
-                gcode_list.append(txt)
+                gcodeline = ""
+                if i == 1:
+                    gcodeline += "G1"
+                    
+                for a in range(0,3):
+                    if position[a] != position_last[a]: # only write changes
+                        txt = "{}{:0.3f}".format(words[a], position[a])
+                        txt = txt.rstrip("0").rstrip(".")
+                        gcodeline += txt
+                        position_last[a] = position[a]
+                        
+                if i == 1:
+                    if self.contains_spindle:
+                        # only neccessary at first segment of arc
+                        # gcode is a state machine
+                        gcodeline += "S{:d}".format(self.spindle)
+                    
+                gcode_list.append(gcodeline)
+            
             
         
-        txt = "X{:0.3f}Y{:0.3f}Z{:0.3f}".format(target[0], target[1], target[2])
-        if self.contains_spindle:
-            txt += "S{:d}".format(self.spindle)
-        gcode_list.append(txt)
+        # make sure we arrive at target
+        gcodeline = ""
+        if segments <= 1:
+            gcodeline += "G1"
         
-        gcode_list.append(self.current_distance_mode) # restore
-        gcode_list.append(";_gerbil.arc_end:" + self.line)
+        for a in range(0,3):
+            if target[a] != position[a]:
+                txt = "{}{:0.3f}".format(words[a], target[a])
+                txt = txt.rstrip("0").rstrip(".")
+                gcodeline += txt
+           
+        if segments <= 1 and self.contains_spindle:
+            # no segments were rendered (very small arc) so we have to put S here
+            gcodeline += "S{:d}".format(self.spindle)
+                
+        gcode_list.append(gcodeline)
+        
+        if do_restore_distance_mode == True:
+          gcode_list.append(self.current_distance_mode)
+          
+        gcode_list.append(";_gerbil.arc_end")
         
         return gcode_list
     
         
     def _fractionize_linear_motion(self):
         gcode_list = []
-        gcode_list.append(";_gerbil.line_begin:" + self.line)
-        gcode_list.append("G1")
+        gcode_list.append(";_gerbil.line_begin")
         
         num_fractions = int(self.dist / self.fract_linear_segment_len)
         
         for k in range(0, num_fractions):
             # render segments
             txt = ""
+            if k == 0:
+                txt += "G1"
+                
             for i in range(0, 3):
                 # loop over X, Y, Z axes
                 segment_length = self.dists[i] / num_fractions
@@ -460,15 +491,23 @@ class Preprocessor:
                 else:
                     # relative distances
                     txt += "{}{:0.3f}".format(self._axes_words[i], segment_length)
-                    
+                
+            if k == 0 and self.contains_spindle:
+                txt += "S{:d}".format(self.spindle)
+            
             gcode_list.append(txt)
             
-        gcode_list.append(";_gerbil.line_end:" + self.line)
+        gcode_list.append(";_gerbil.line_end")
         return gcode_list
     
        
     def _parse_distance_values(self):
         #self.target = self.position
+        
+        # look for spindle
+        m = re.match(self._re_spindle, self.line)
+        self.contains_spindle = True if m else False
+        if m: self.spindle = int(m.group(1))
         
         if self.current_motion_mode == 2 or self.current_motion_mode == 3:
             self.offset = [None, None, None]
@@ -482,11 +521,7 @@ class Preprocessor:
             m = re.match(self._re_radius, self.line)
             self.contains_radius = True if m else False
             if m: self.radius = float(m.group(1))
-            
-            m = re.match(self._re_spindle, self.line)
-            self.contains_spindle = True if m else False
-            if m: self.spindle = int(m.group(1))
-                
+
                 
         self.dists = [0, 0, 0] # distance traveled by this G-Code cmd in xyz
         for i in range(0, 3):
