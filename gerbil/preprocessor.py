@@ -37,7 +37,8 @@ class Preprocessor:
         self.logger.info("Preprocessor Class Initialized")
         
         self.do_feed_override = False
-        self.do_fractionize = True
+        self.do_fractionize_lines = True
+        self.do_fractionize_arcs = True
         
         self.fract_linear_threshold = 1
         self.fract_linear_segment_len = 0.5
@@ -48,7 +49,7 @@ class Preprocessor:
         # state information mirroring Grbl's
         self.contains_feed = False
         self.current_distance_mode = "G90"
-        self.current_motion_mode = "G0"
+        self.current_motion_mode = 0
         self.current_plane_mode = "G17"
         self.position = [None, None, None] # current xyz position, i.e. self.target of last line
         self.target = [None, None, None] # xyz target of current line
@@ -76,14 +77,15 @@ class Preprocessor:
         #self._re_var_replace = re.compile(r"#\d")
         self._re_feed = re.compile(".*F([.\d]+)")
         self._re_feed_replace = re.compile(r"F[.\d]+")
-        self._re_motion_mode = re.compile("(G[0123])([^\d]|$)")
+        self._re_motion_mode = re.compile("G([0123])*([^\\d]|$)")
         self._re_distance_mode = re.compile("(G9[01])([^\d]|$)")
         self._re_plane_mode = re.compile("(G1[789])([^\d]|$)")
         
         # regex to remove all foreign comments except those
         # specific to this library, which begin with _gerbil.
         self._re_comment_bracket_replace = re.compile(r"\(.*?\)")
-        self._re_comment_semicolon_replace = re.compile(r";(?!_gerbil).*")
+        self._re_comment_other_replace = re.compile(r"[;%](?!_gerbil).*")
+        self._re_comment_all_replace = re.compile(r"[;%].*")
         
         
         
@@ -127,9 +129,13 @@ class Preprocessor:
     
     
     def parse_state(self):
+        stripped = re.sub(self._re_comment_all_replace, "", self.line).strip()
+        if stripped == "":
+            return
+        
         # parse G0 .. G3 and remember
         m = re.match(self._re_motion_mode, self.line)
-        if m: self.current_motion_mode = m.group(1)
+        if m: self.current_motion_mode = int(m.group(1))
         
         # parse G90 and G91 and remember
         m = re.match(self._re_distance_mode, self.line)
@@ -165,13 +171,10 @@ class Preprocessor:
         """
         result = []
 
-        if self.do_fractionize != True:
-            result = [self.line]
-            
-        elif self.current_motion_mode == "G1" and self.dist > self.fract_linear_threshold:
+        if self.do_fractionize_lines == True and self.current_motion_mode == 1 and self.dist > self.fract_linear_threshold:
             result = self._fractionize_linear_motion()
            
-        elif self.current_motion_mode == "G2" or self.current_motion_mode == "G3":
+        elif self.do_fractionize_arcs == True and (self.current_motion_mode == 2 or self.current_motion_mode == 3):
             result = self._fractionize_circular_motion()
             
         else:
@@ -184,7 +187,7 @@ class Preprocessor:
     
     def done(self):
         # remember last pos
-        if not (self.current_motion_mode == "G0" or self.current_motion_mode == "G1"):
+        if not (self.current_motion_mode == 0 or self.current_motion_mode == 1):
             # only G1 and G2 can stay active
             self.current_motion_mode = None 
             
@@ -219,7 +222,7 @@ class Preprocessor:
                 return self.line
             else:
                 self.line = self.line.replace("#" + key, val)
-                self.callback("on_log", "SUBSTITUED VAR #{} -> {}".format(key, val))
+                self.logger.info("SUBSTITUED VAR #{} -> {}".format(key, val))
             
         return self.line
     
@@ -238,12 +241,14 @@ class Preprocessor:
         if self.do_feed_override == True and self.request_feed:
             if self.contains_feed:
                 # strip the original F setting
-                self.line = re.sub(self._re_feed_replace, "", self.line)
+                self.line = re.sub(self._re_feed_replace, "", self.line).strip()
+                
                 
             if self.feed_last != self.request_feed:
                 self.line += "F{:0.1f}".format(self.request_feed)
                 self.feed_last = self.request_feed
-                self.callback("on_log", "OVERRIDING FEED: " + str(self.feed_last))
+                self.logger.info("OVERRIDING FEED: " + str(self.feed_last))
+                print("OVERRIDING FEED: " + self.line)
                 self.callback("on_preprocessor_feed_change", self.feed_last)
         return self.line
     
@@ -260,7 +265,7 @@ class Preprocessor:
     def _strip_comments(self):
         # strip comments
         self.line = re.sub(self._re_comment_bracket_replace, "", self.line)
-        self.line = re.sub(self._re_comment_semicolon_replace, "", self.line)
+        self.line = re.sub(self._re_comment_other_replace, "", self.line)
 
 
     def _strip(self):
@@ -275,7 +280,7 @@ class Preprocessor:
     This function is copyright (c) Sungeun K. Jeon under GNU General Public License 3
     """
     def _fractionize_circular_motion(self):
-        # implies self.current_motion_mode == "G2" or self.current_motion_mode == "G3"
+        # implies self.current_motion_mode == 2 or self.current_motion_mode == 3
         
         if self.current_plane_mode == "G17":
             axis_0 = 0 # X axis
@@ -290,7 +295,7 @@ class Preprocessor:
             axis_1 = 2 # Z axis
             axis_linear = 0 # X axis
             
-        is_clockwise_arc = True if self.current_motion_mode == "G2" else False
+        is_clockwise_arc = True if self.current_motion_mode == 2 else False
             
         # deltas between target and (current) position
         x = self.target[axis_0] - self.position[axis_0]
@@ -348,7 +353,7 @@ class Preprocessor:
                     self.logger.error("Arc in Offset Mode: Invalid Target. r={:f} delta_r={:f} {}".format(self.radius, delta_r, self.line))
                     return [self.line]
         
-        print(self.position, self.target, self.offset, self.radius, axis_0, axis_1, axis_linear, is_clockwise_arc)
+       #print(self.position, self.target, self.offset, self.radius, axis_0, axis_1, axis_linear, is_clockwise_arc)
         
         gcode_list = self.mc_arc(self.position, self.target, self.offset, self.radius, axis_0, axis_1, axis_linear, is_clockwise_arc)
         
@@ -394,21 +399,22 @@ class Preprocessor:
         
         #print("angular_travel:{:f}, radius:{:f}, arc_tolerance:{:f}, segments:{:d}".format(angular_travel, radius, arc_tolerance, segments))
         
-        theta_per_segment = angular_travel / segments
-        linear_per_segment = (target[axis_linear] - position[axis_linear]) / segments
-        
-        for i in range(1, segments):
-            cos_Ti = math.cos(i * theta_per_segment);
-            sin_Ti = math.sin(i * theta_per_segment);
-            r_axis0 = -offset[axis_0] * cos_Ti + offset[axis_1] * sin_Ti;
-            r_axis1 = -offset[axis_0] * sin_Ti - offset[axis_1] * cos_Ti;
-        
-            position[axis_0] = center_axis0 + r_axis0;
-            position[axis_1] = center_axis1 + r_axis1;
-            position[axis_linear] += linear_per_segment;
+        if segments:
+            theta_per_segment = angular_travel / segments
+            linear_per_segment = (target[axis_linear] - position[axis_linear]) / segments
+            
+            for i in range(1, segments):
+                cos_Ti = math.cos(i * theta_per_segment);
+                sin_Ti = math.sin(i * theta_per_segment);
+                r_axis0 = -offset[axis_0] * cos_Ti + offset[axis_1] * sin_Ti;
+                r_axis1 = -offset[axis_0] * sin_Ti - offset[axis_1] * cos_Ti;
+            
+                position[axis_0] = center_axis0 + r_axis0;
+                position[axis_1] = center_axis1 + r_axis1;
+                position[axis_linear] += linear_per_segment;
 
-            gcode_list.append("X{:0.3f}Y{:0.3f}Z{:0.3f}".format(position[0], position[1], position[2]))
-        
+                gcode_list.append("X{:0.3f}Y{:0.3f}Z{:0.3f}".format(position[0], position[1], position[2]))
+            
         gcode_list.append("X{:0.3f}Y{:0.3f}Z{:0.3f}".format(target[0], target[1], target[2]))
         
         gcode_list.append(self.current_distance_mode) # restore
@@ -450,7 +456,7 @@ class Preprocessor:
     def _parse_distance_values(self):
         #self.target = self.position
         
-        if self.current_motion_mode == "G2" or self.current_motion_mode == "G3":
+        if self.current_motion_mode == 2 or self.current_motion_mode == 3:
             self.offset = [None, None, None]
             for i in range(0, 3):
                 # loop over I, J, K offsets
