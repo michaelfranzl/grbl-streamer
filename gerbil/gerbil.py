@@ -516,6 +516,8 @@ class Gerbil:
         The feed speed in mm/min.
         """
         self.preprocessor.request_feed = float(requested_feed)
+        if self._streaming_enabled == True:
+            self.send_immediately("F{:d}".format(requested_feed))
 
         
     @property
@@ -956,6 +958,10 @@ class Gerbil:
             self.gps[10] = m.group(11) # current feed
             self.gps[11] = m.group(12) # current rpm
             self._callback("on_gcode_parser_stateupdate", self.gps)
+            
+            # keep preprocessor informed about current working pos
+            self.preprocessor.position = list(self.cwpos)
+            self.preprocessor.target = list(self.cwpos)
         else:
             self.logger.error("{}: Could not parse gcode parser report: '{}'".format(self.name, line))
         
@@ -966,17 +972,16 @@ class Gerbil:
         wpos_parts = m.group(3).split(",")
         self.cmpos = (float(mpos_parts[0]), float(mpos_parts[1]), float(mpos_parts[2]))
         self.cwpos = (float(wpos_parts[0]), float(wpos_parts[1]), float(wpos_parts[2]))
-        
-        if self.cmode == "Idle":
-            # keep preprocessor informed about current working pos
-            self.preprocessor.position = list(self.cwpos)
-            self.preprocessor.target = list(self.cwpos)
 
         if (self.cmode != self._last_cmode or
             self.cmpos != self._last_cmpos or
             self.cwpos != self._last_cwpos):
             self._callback("on_stateupdate", self.cmode, self.cmpos, self.cwpos)
             if self.cmode == "Idle":
+                # keep preprocessor informed about current working pos
+                self.preprocessor.position = list(self.cwpos)
+                self.preprocessor.target = list(self.cwpos)
+            
                 self.gcode_parser_state_requested = True
                 self.hash_state_requested = True
         

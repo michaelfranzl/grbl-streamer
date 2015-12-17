@@ -196,7 +196,7 @@ class Preprocessor:
             
         for i in range(0, 3):
             # loop over X, Y, Z axes
-            if self.target[i] != None:
+            if self.target[i] != None: # keep state
                 self.position[i] = self.target[i]
     
     def find_vars(self):
@@ -351,13 +351,11 @@ class Preprocessor:
             delta_r = math.fabs(target_r - self.radius);
             if delta_r > 0.005:
                 if delta_r > 0.5:
-                    self.logger.error("Arc in Offset Mode: Invalid Target. r={:f} delta_r={:f} {}".format(self.radius, delta_r, self.line))
-                    return [self.line]
+                    self.logger.warning("Arc in Offset Mode: Invalid Target. r={:f} delta_r={:f} {}".format(self.radius, delta_r, self.line))
                 if delta_r > (0.001 * self.radius):
-                    self.logger.error("Arc in Offset Mode: Invalid Target. r={:f} delta_r={:f} {}".format(self.radius, delta_r, self.line))
-                    return [self.line]
+                    self.logger.warning("Arc in Offset Mode: Invalid Target. r={:f} delta_r={:f} {}".format(self.radius, delta_r, self.line))
         
-       #print(self.position, self.target, self.offset, self.radius, axis_0, axis_1, axis_linear, is_clockwise_arc)
+        #print(self.position, self.target, self.offset, self.radius, axis_0, axis_1, axis_linear, is_clockwise_arc)
         
         gcode_list = self.mc_arc(self.position, self.target, self.offset, self.radius, axis_0, axis_1, axis_linear, is_clockwise_arc)
         
@@ -370,7 +368,7 @@ class Preprocessor:
     """
     def mc_arc(self, position, target, offset, radius, axis_0, axis_1, axis_linear, is_clockwise_arc):
         gcode_list = []
-        gcode_list.append(";_gerbil.arc_begin")
+        gcode_list.append(";_gerbil.arc_begin:{}".format(self.line))
         
         do_restore_distance_mode = False
         if self.current_distance_mode == "G91":
@@ -461,14 +459,14 @@ class Preprocessor:
         if do_restore_distance_mode == True:
           gcode_list.append(self.current_distance_mode)
           
-        gcode_list.append(";_gerbil.arc_end")
+        gcode_list.append(";_gerbil.arc_end:{}".format(self.line))
         
         return gcode_list
     
         
     def _fractionize_linear_motion(self):
         gcode_list = []
-        gcode_list.append(";_gerbil.line_begin")
+        gcode_list.append(";_gerbil.line_begin:{}".format(self.line))
         
         num_fractions = int(self.dist / self.fract_linear_segment_len)
         
@@ -497,7 +495,7 @@ class Preprocessor:
             
             gcode_list.append(txt)
             
-        gcode_list.append(";_gerbil.line_end")
+        gcode_list.append(";_gerbil.line_end:{}".format(self.line))
         return gcode_list
     
        
