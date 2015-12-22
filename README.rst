@@ -104,6 +104,12 @@ When we're done, we disconnect from the firmware::
     grbl.disconnect()
 
 
+TODO
+-------
+
+* Make this project more compliant with Python module packaging.
+
+    
 License
 --------
 
