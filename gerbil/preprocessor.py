@@ -40,7 +40,7 @@ class Preprocessor:
         self.do_fractionize_lines = True
         self.do_fractionize_arcs = True
         
-        self.fract_linear_threshold = 1
+        self.fract_linear_threshold = 1 # units: inches or mm
         self.fract_linear_segment_len = 0.5
         
         self.request_feed = None
@@ -94,7 +94,15 @@ class Preprocessor:
         self._re_comment_other_replace = re.compile(r"[;%](?!_gerbil).*")
         self._re_comment_all_replace = re.compile(r"[;%].*")
         
+        self._arc_count = 0
         
+        # put colors in comments for visualization, keys are G modes
+        self.colors = {
+            0: (.5, .5, .5, 1),  # grey
+            1: (.7, .7, 1, 1),   # blue/purple
+            2: (0.7, 1, 0.8, 1), # greenish
+            3: (0.9, 1, 0.7, 1), # green/yellowish
+            }
         
     def job_new(self):
         """
@@ -266,8 +274,7 @@ class Preprocessor:
         
         
     def _strip_comments(self):
-        # strip comments
-        #self.line = re.sub(_re_comment_all_replace, "", self.line)
+        # strip all non-_gerbil comments
         self.line = re.sub(self._re_comment_bracket_replace, "", self.line)
         self.line = re.sub(self._re_comment_other_replace, "", self.line)
 
@@ -361,14 +368,23 @@ class Preprocessor:
         
         return gcode_list
         
-    """
-    This function is a direct port of Grbl's C code into Python (motion_control.c)
-    with slight refactoring for Python by Michael Franzl.
-    This function is copyright (c) Sungeun K. Jeon under GNU General Public License 3
-    """
+
     def mc_arc(self, position, target, offset, radius, axis_0, axis_1, axis_linear, is_clockwise_arc):
+        """
+        This function is a direct port of Grbl's C code into Python (motion_control.c)
+        with slight refactoring for Python by Michael Franzl.
+        This function is copyright (c) Sungeun K. Jeon under GNU General Public License 3
+        """
+        
+        self._arc_count += 1
+        
         gcode_list = []
-        gcode_list.append(";_gerbil.arc_begin:{}".format(self.line))
+        gcode_list.append(";_gerbil.arc_begin[{}]".format(self.line))
+        
+        col = self.colors[self.current_motion_mode]
+        fac = 1 if self._arc_count % 2 == 0 else 0.5
+        col = tuple(c * fac for c in col)
+        gcode_list.append(";_gerbil.color_begin[{:.2f},{:.2f},{:.2f}]".format(*col))
         
         do_restore_distance_mode = False
         if self.current_distance_mode == "G91":
@@ -458,15 +474,19 @@ class Preprocessor:
         
         if do_restore_distance_mode == True:
           gcode_list.append(self.current_distance_mode)
-          
-        gcode_list.append(";_gerbil.arc_end:{}".format(self.line))
+        
+        gcode_list.append(";_gerbil.color_end")
+        gcode_list.append(";_gerbil.arc_end")
         
         return gcode_list
     
         
     def _fractionize_linear_motion(self):
         gcode_list = []
-        gcode_list.append(";_gerbil.line_begin:{}".format(self.line))
+        gcode_list.append(";_gerbil.line_begin:'{}'".format(self.line))
+        
+        col = self.colors[self.current_motion_mode]
+        gcode_list.append(";_gerbil.color_begin[{:.2f},{:.2f},{:.2f}]".format(col[0], col[1], col[2]))
         
         num_fractions = int(self.dist / self.fract_linear_segment_len)
         
@@ -494,8 +514,9 @@ class Preprocessor:
                 txt += "S{:d}".format(self.spindle)
             
             gcode_list.append(txt)
-            
-        gcode_list.append(";_gerbil.line_end:{}".format(self.line))
+        
+        gcode_list.append(";_gerbil.color_end")
+        gcode_list.append(";_gerbil.line_end")
         return gcode_list
     
        
