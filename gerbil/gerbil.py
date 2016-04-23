@@ -435,6 +435,7 @@ class Gerbil:
         Immediately sends `Ctrl-X` to Grbl.
         """
         self._iface.write("\x18") # Ctrl-X
+        self.update_preprocessor_position()
         
         
     def abort(self):
@@ -761,6 +762,12 @@ class Gerbil:
         self._buffer_size = self._buffer_size_stash
         self.current_line_number = self._current_line_nr_stash
         self._callback("on_bufsize_change", self._buffer_size)
+        
+        
+    def update_preprocessor_position(self):
+        # keep preprocessor informed about current working pos
+        self.preprocessor.position = list(self.cwpos)
+        self.preprocessor.target = list(self.cwpos)
 
     def _preprocessor_callback(self, event, *data):
         if event == "on_preprocessor_var_undefined":
@@ -986,9 +993,7 @@ class Gerbil:
             self.gps[11] = m.group(12) # current rpm
             self._callback("on_gcode_parser_stateupdate", self.gps)
             
-            # keep preprocessor informed about current working pos
-            self.preprocessor.position = list(self.cwpos)
-            self.preprocessor.target = list(self.cwpos)
+            self.update_preprocessor_position()
         else:
             self.logger.error("{}: Could not parse gcode parser report: '{}'".format(self.name, line))
         
@@ -1005,10 +1010,7 @@ class Gerbil:
             self.cwpos != self._last_cwpos):
             self._callback("on_stateupdate", self.cmode, self.cmpos, self.cwpos)
             if self.cmode == "Idle":
-                # keep preprocessor informed about current working pos
-                self.preprocessor.position = list(self.cwpos)
-                self.preprocessor.target = list(self.cwpos)
-            
+                self.update_preprocessor_position()
                 self.gcode_parser_state_requested = True
                 self.hash_state_requested = True
         
