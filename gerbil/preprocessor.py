@@ -339,7 +339,7 @@ class Preprocessor:
                 self.callback("on_preprocessor_var_undefined", key)
                 return self.line
             else:
-                self.line = self.line.replace("#" + key, val)
+                self.line = self.line.replace("#" + key, str(val))
                 self.logger.info("SUBSTITUED VAR #{} -> {}".format(key, val))
             
         return self.line

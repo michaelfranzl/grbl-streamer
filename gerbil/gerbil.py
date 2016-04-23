@@ -908,9 +908,11 @@ class Gerbil:
                         # last line
                         if self.hash_state_requested:
                             self._callback("on_hash_stateupdate", self.settings_hash)
+                            self.hash_state_requested = False
                         else:
                             self._callback("on_probe", self.settings_hash["PRB"])
-                        self.hash_state_requested = False
+                       
+                        
                     
                 elif "ALARM" in line:
                     self._callback("on_read", line)
@@ -1011,8 +1013,8 @@ class Gerbil:
             self._callback("on_stateupdate", self.cmode, self.cmpos, self.cwpos)
             if self.cmode == "Idle":
                 self.update_preprocessor_position()
-                self.gcode_parser_state_requested = True
-                self.hash_state_requested = True
+                #self.gcode_parser_state_requested = True
+                #self.hash_state_requested = True
         
         self._last_cmode = self.cmode
         self._last_cmpos = self.cmpos
