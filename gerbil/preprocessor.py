@@ -93,21 +93,92 @@ class Preprocessor:
         self._re_radius = re.compile(".*R([-.\d]+)")
         self._re_spindle = re.compile(".*S([-.\d]+)")
         
-        self._re_findall_vars = re.compile("#(\d)")
-        #self._re_var_replace = re.compile(r"#\d")
+        self._re_use_var = re.compile("#(\d*)")
+        self._re_set_var = re.compile("^\s*#(\d+)=([\d.-]+)")
+        
         self._re_feed = re.compile(".*F([.\d]+)")
         self._re_feed_replace = re.compile(r"F[.\d]+")
         self._re_motion_mode = re.compile("G([0123])*([^\\d]|$)")
         self._re_distance_mode = re.compile("(G9[01])([^\d]|$)")
         self._re_plane_mode = re.compile("(G1[789])([^\d]|$)")
         
-        # regex to remove all foreign comments except those
-        # specific to this library, which begin with _gerbil.
-        self._re_comment_bracket_replace = re.compile(r"\(.*?\)")
+        self._re_comment_paren_convert = re.compile("(.*)\((.*?)\)\s*$")
+        self._re_comment_paren_replace = re.compile(r"\(.*?\)")
         self._re_comment_other_replace = re.compile(r"[;%](?!_gerbil).*")
         self._re_comment_all_replace = re.compile(r"[;%].*")
         
+        self._re_match_cmd_number = re.compile("([GMT])(\d+)")
+        self._re_expand_multicommands = re.compile("([GMT])")
+
+        self._whitelist_commands = {
+            "G": [
+                # non-modal commands
+                4,  # Dwell
+                10, # set coordintate system
+                28, # Go to predefined position
+                30, # Go to predefined position
+                53, # move in machine coordinates
+                92, # set coordintate system offset
+                
+                # motion modes
+                0, # fast linear
+                1, # slow linear
+                2, # slow arc CW
+                3, # slow arc CCW
+                38, # probe
+                80, # canned cycle stop
+                
+                # feed rate modes
+                93, # inverse
+                94, # normal
+                
+                # units
+                20, # inch
+                21, # mm
+                
+                # distance modes
+                90, # absulute
+                91, # incremental
+                
+                # plane select
+                17, # XY
+                18, # ZY
+                19, # YZ
+                
+                # tool length offset
+                43, # set compensation
+                49, # cancel compensation
+                
+                # coordinate systems
+                54,
+                55,
+                56,
+                57,
+                58,
+                59,
+                ],
+            
+            "M": [
+                # program flow
+                0,
+                1,
+                2,
+                30,
+                
+                # coolant
+                8,
+                9,
+                
+                # spindle
+                3,
+                4,
+                5,
+                ]
+            }
+        
         self._arc_count = 0
+        self._line_is_only_comment = False
+        self._line_is_unsupported_cmd = False
         
         # put colors in comments for visualization, keys are G modes
         self.colors = {
@@ -130,36 +201,48 @@ class Preprocessor:
         """
         self.feed_last = None # After boot, Grbl's feed is not set.
         self.callback("on_preprocessor_feed_change", self.feed_last)
+
         
+    def split_lines(self):
+        if self._line_is_only_comment == True:
+            return [self.line]
+        else:
+            commands = re.sub(self._re_expand_multicommands, "\n\g<0>", self.line).strip()
+            lines = commands.split("\n")
+            return lines
     
-    def set_vars(self, vars):
-        """
-        Define variables and their substitution.
-        
-        @param vars
-        A dictionary containing variable names and values. E.g. {"1":3, "2":4}
-        """
-        self.vars = vars
-        
-        
-    def set_line(self, line):
-        self.line = line
-        
         
     def tidy(self):
         """
-        Strips G-Code not supported by Grbl, comments, and cleans up spaces in G-Code for slightly reduced serial bandwidth. . Set line first with `set_line`. Returns the tidy line. 
+        Strips G-Code not supported by Grbl.
+        Set line first with `set_line`. Returns the tidy line. 
         """
-        self._strip_comments()
-        self._strip_unsupported()
-        self._strip()
+        # strip spaces at begin and at end
+        self.line = self.line.strip()
+        
+        # transform [MG]\d to G\d\d for better parsing
+        def format_cmd_number(matchobj):
+            cmd = matchobj.group(1)
+            cmd_nr = int(matchobj.group(2))
+            self._line_is_unsupported_cmd = not (cmd in self._whitelist_commands and cmd_nr in self._whitelist_commands[cmd])
+            return "{}{:02d}".format(cmd, cmd_nr)
+        
+        self.line = re.sub(self._re_match_cmd_number, format_cmd_number, self.line)
+        
+        if self._line_is_unsupported_cmd:
+            self.line = ";" + self.line + " ;_gerbil.unsupported"
+        
+        #self._strip_unsupported()
+
         return self.line
     
     
     def parse_state(self):
+        if self._line_is_only_comment: return
+    
         # parse G0 .. G3 and remember
         m = re.match(self._re_motion_mode, self.line)
-        if m: self.current_motion_mode = int(m.group(1))
+        if m:self.current_motion_mode = int(m.group(1))
         
         # parse G90 and G91 and remember
         m = re.match(self._re_distance_mode, self.line)
@@ -172,8 +255,7 @@ class Preprocessor:
         # see if current line has F
         m = re.match(self._re_feed, self.line)
         self.contains_feed = True if m else False
-        if m:
-            self.feed_current = float(m.group(1))
+        if m: self.feed_current = float(m.group(1))
         
         self._parse_distance_values()
         
@@ -193,6 +275,8 @@ class Preprocessor:
         This is useful for faster response times when stopping the stream
         as well as for the dynamic feed adjustment feature of gerbil.
         """
+        if self._line_is_only_comment: return [self.line]
+    
         result = []
 
         if self.do_fractionize_lines == True and self.current_motion_mode == 1 and self.dist > self.fract_linear_threshold:
@@ -222,18 +306,28 @@ class Preprocessor:
     
     def find_vars(self):
         """
-        Parses all #1, #2, etc. variables in a G-Code line and populates the internal `vars` dict. After this function is done, the dict will not have any values set.
+        Parses all # variables in a G-Code line and populates the internal `vars` dict.
         """
-        keys = re.findall(self._re_findall_vars, self.line)
+        
+        # find variable assignments
+        m = re.match(self._re_set_var, self.line)
+        if m:
+            key = m.group(1)
+            val = str(float(m.group(2))) # get rid of extra zeros
+            self.vars[key] = val
+            self.line = ";" + self.line
+        
+        # find variable usages
+        keys = re.findall(self._re_use_var, self.line)
         for key in keys:
-            self.vars[key] = None
+            if not key in self.vars: self.vars[key] = None
         
         
     def substitute_vars(self):
         """
-        Does actual #1, #2, etc. variable substitution based on the values previously stored in the `vars` dict. When a variable is to be substituted but no substitution value has been set previously in the `vars` dict, a callback "on_preprocessor_var_undefined" will be made and no substitution done. If this happens, it is an User error and the stream should be stopped.
+        Variable substitution based on the values previously stored in the `vars` dict. When a variable is to be substituted but no substitution value has been set previously in the `vars` dict, a callback "on_preprocessor_var_undefined" will be made and no substitution done. If this happens, it is an User error and the stream should be stopped.
         """
-        keys = re.findall(self._re_findall_vars, self.line)
+        keys = re.findall(self._re_use_var, self.line)
         
         for key in keys:
             val = None
@@ -255,6 +349,9 @@ class Preprocessor:
         """
         Optionally overrides feed dynamically. Set line first with `set_line`
         """
+        
+        if self._line_is_only_comment: return
+    
         if self.do_feed_override == False and self.contains_feed:
             # Simiply update the UI for detected feed
             if self.feed_last != self.feed_current:
@@ -265,36 +362,36 @@ class Preprocessor:
         if self.do_feed_override == True and self.request_feed:
             if self.contains_feed:
                 # strip the original F setting
+                self.logger.info("STRIPPING FEED: " + self.line)
                 self.line = re.sub(self._re_feed_replace, "", self.line).strip()
                 
-                
+
+        #print("current motion mode", self.current_motion_mode)
+        if self.do_feed_override == True and self.request_feed and self.current_motion_mode and self.current_motion_mode >= 1 and self.current_motion_mode <= 3:
             if self.feed_last != self.request_feed:
                 self.line += "F{:0.1f}".format(self.request_feed)
                 self.feed_last = self.request_feed
                 self.logger.info("OVERRIDING FEED: " + str(self.feed_last))
-                print("OVERRIDING FEED: " + self.line)
                 self.callback("on_preprocessor_feed_change", self.feed_last)
         return self.line
-    
-    
-    def _strip_unsupported(self):
-        # This silently strips gcode unsupported by Grbl, but ONLY those commands that are safe to strip without making the program deviate from its original purpose. For example it is  safe to strip a tool change. All other encountered unsupported commands should be sent to Grbl nevertheless so that an error is raised. The user then can make an informed decision.
-        if ("T" in self.line or # tool change
-            "M6" in self.line or # tool change
-            re.match("#\d=.*", self.line) # var assignment
-            ): 
-            self.line = ""
+
         
-        
-    def _strip_comments(self):
-        # strip all non-_gerbil comments
-        self.line = re.sub(self._re_comment_bracket_replace, "", self.line)
-        self.line = re.sub(self._re_comment_other_replace, "", self.line)
+    def set_line(self, line):
+        self.line = line
+        self._line_is_only_comment = self.line and self.line[0] == ";" # this line is only a comment
 
 
-    def _strip(self):
+    def transform_comments(self):
+        # transform () comment at end of line into semicolon comment
+        self.line = re.sub(self._re_comment_paren_convert, "\g<1>;\g<2>", self.line)
+        
+        # remove all remaining in-line () comments
+        self.line = re.sub(self._re_comment_paren_replace, "", self.line)
+
+        self._line_is_only_comment = self.line and self.line[0] == ";" # this line is only a comment
+
+    def _strip_all_spaces(self):
         # Remove blank spaces and newlines from beginning and end, and remove blank spaces from the middle of the line.
-        self.line = self.line.strip()
         self.line = self.line.replace(" ", "")
         
         
@@ -459,10 +556,8 @@ class Preprocessor:
                         position_last[a] = position[a]
                         
                 if i == 1:
-                    if self.contains_spindle:
-                        # only neccessary at first segment of arc
-                        # gcode is a state machine
-                        gcodeline += "S{:d}".format(self.spindle)
+                    if self.contains_feed: gcodeline += "F{:.1f}".format(self.feed_current)
+                    if self.contains_spindle: gcodeline += "S{:d}".format(self.spindle)
                     
                 gcode_list.append(gcodeline)
             
@@ -479,9 +574,10 @@ class Preprocessor:
                 txt = txt.rstrip("0").rstrip(".")
                 gcodeline += txt
            
-        if segments <= 1 and self.contains_spindle:
-            # no segments were rendered (very small arc) so we have to put S here
-            gcodeline += "S{:d}".format(self.spindle)
+        if segments <= 1:
+            # no segments were rendered (very small arc) so we have to put S and F here
+            if self.contains_feed: txt += "F{:.1f}".format(self.feed_current)
+            if self.contains_spindle: txt += "S{:d}".format(self.spindle)
                 
         gcode_list.append(gcodeline)
         
@@ -523,8 +619,10 @@ class Preprocessor:
                     # relative distances
                     txt += "{}{:0.3f}".format(self._axes_words[i], segment_length)
                 
-            if k == 0 and self.contains_spindle:
-                txt += "S{:d}".format(self.spindle)
+            if k == 0:
+                if self.contains_feed: txt += "F{:.1f}".format(self.feed_current)
+                if self.contains_spindle: txt += "S{:d}".format(self.spindle)
+                
             
             gcode_list.append(txt)
         

@@ -531,8 +531,6 @@ class Gerbil:
         The feed speed in mm/min.
         """
         self.preprocessor.request_feed = float(requested_feed)
-        if self._streaming_enabled == True:
-            self.send_immediately("F{:d}".format(requested_feed))
 
         
     @property
@@ -591,9 +589,9 @@ class Gerbil:
         self.preprocessor.set_line(line)
         self.preprocessor.tidy()
         self.preprocessor.parse_state()
-        line = self.preprocessor.override_feed()
-        self.preprocessor.done()
-        self._iface_write(line + "\n")
+        self.preprocessor.override_feed()
+        
+        self._iface_write(self.preprocessor.line + "\n")
         
         
     def stream(self, lines):
@@ -782,7 +780,6 @@ class Gerbil:
         if self.target == "firmware":
             if self._incremental_streaming:
                 self._set_next_line()
-                #print("INCREMENTAL", self._current_line)
                 if self._streaming_src_end_reached == False:
                     self._send_current_line()
                 else:
@@ -818,13 +815,14 @@ class Gerbil:
             # still something in _buffer, pop it
             line = self._buffer[self._current_line_nr].strip()
             self.preprocessor.set_line(line)
+            # no need for preprocessor to tidy here.
+            # Gcode is already tidied when written to buffer (see _load_line_into_buffer)
+            self.preprocessor.substitute_vars()
             self.preprocessor.parse_state()
             self.preprocessor.override_feed()
-            self.preprocessor.substitute_vars()
             cmm = self.preprocessor.current_motion_mode
             if cmm != None:
                 if cmm == 2 or cmm == 3: cmm = 1 # approximate circles as lines
-                #print("setnextline adding dist {}".format(self.preprocessor.dist))
                 self.travel_dist_current[cmm] += self.preprocessor.dist
             
             self._current_line = self.preprocessor.line
@@ -901,7 +899,11 @@ class Gerbil:
                     self._callback("on_read", line)
                     if "PRB" in line:
                         # last line
-                        self._callback("on_hash_stateupdate", self.settings_hash)
+                        if self.hash_state_requested:
+                            self._callback("on_hash_stateupdate", self.settings_hash)
+                        else:
+                            self._callback("on_probe", self.settings_hash["PRB"])
+                        self.hash_state_requested = False
                     
                 elif "ALARM" in line:
                     self._callback("on_read", line)
@@ -1020,7 +1022,7 @@ class Gerbil:
         
         max_feed_rate = float(self.settings[110]["val"])
         mins = 0
-        print("TO GO {} {} {} {}".format(self.travel_dist_buffer[0], self.travel_dist_current[0], self.travel_dist_buffer[1], self.travel_dist_current[1]))
+        #print("TO GO {} {} {} {}".format(self.travel_dist_buffer[0], self.travel_dist_current[0], self.travel_dist_buffer[1], self.travel_dist_current[1]))
         mins += (self.travel_dist_buffer[0] - self.travel_dist_current[0]) / max_feed_rate
         mins += (self.travel_dist_buffer[1] - self.travel_dist_current[1]) / self.preprocessor.feed_last
         self.eta = mins * 60
@@ -1028,30 +1030,34 @@ class Gerbil:
         
     def _load_line_into_buffer(self, line):
         self.preprocessor.set_line(line)
-        self.preprocessor.tidy()
-        self.preprocessor.parse_state()
-        self.preprocessor.override_feed()
-        self.preprocessor.find_vars()
-        lines = self.preprocessor.fractionize()
-        travel_dist = self.preprocessor.dist
+        self.preprocessor.transform_comments()
+        split_lines = self.preprocessor.split_lines()
         
-        cf = self.preprocessor.feed_last
-        cmm = self.preprocessor.current_motion_mode
-        if cmm != None and cf != None:
-            if cmm == 2 or cmm == 3: cmm = 1  # approximate arcs linear
-            self.travel_dist_buffer[cmm] += self.preprocessor.dist
-            if cmm == 0:
-                # based on x max rate
-                self.eta += travel_dist / float(self.settings[110]["val"]) * 60
-            else:
-                self.eta += travel_dist / cf * 60
+        for l1 in split_lines:
+            self.preprocessor.set_line(l1)
+            self.preprocessor.tidy()
+            self.preprocessor.parse_state()
+            self.preprocessor.find_vars()
+            fractionized_lines = self.preprocessor.fractionize()
             
-        for line in lines:
-            if line != "":
-                self._buffer.append(line)
-                self._buffer_size += 1
+            travel_dist = self.preprocessor.dist
+            
+            cf = self.preprocessor.feed_last
+            cmm = self.preprocessor.current_motion_mode
+            if cmm != None and cf != None:
+                if cmm == 2 or cmm == 3: cmm = 1  # approximate arcs linear
+                self.travel_dist_buffer[cmm] += self.preprocessor.dist
+                if cmm == 0:
+                    # based on x max rate
+                    self.eta += travel_dist / float(self.settings[110]["val"]) * 60
+                else:
+                    self.eta += travel_dist / cf * 60
                 
-        self.preprocessor.done()
+            for l2 in fractionized_lines:
+                self._buffer.append(l2)
+                self._buffer_size += 1
+                    
+            self.preprocessor.done()
         
     def _load_lines_into_buffer(self, string):
         lines = string.split("\n")
@@ -1106,7 +1112,6 @@ class Gerbil:
             
             if self.hash_state_requested:
                 self.get_hash_state()
-                self.hash_state_requested = False
                 
             elif self.gcode_parser_state_requested:
                 self.get_gcode_parser_state()
