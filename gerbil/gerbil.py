@@ -300,12 +300,12 @@ class Gerbil:
         self._alarm = False
         self._incremental_streaming = False
         
-        self._buffer = []
-        self._buffer_size = 0
+        self.buffer = []
+        self.buffer_size = 0
         self._current_line_nr = 0
         
-        self._buffer_stash = []
-        self._buffer_size_stash = 0
+        self.buffer_stash = []
+        self.buffer_size_stash = 0
         self._current_line_nr_stash = 0
         
         self._poll_keep_alive = False
@@ -662,7 +662,7 @@ class Gerbil:
         If `linenr` is not specified, start streaming from the current
         buffer position (`self.current_line_number`). If `linenr` is specified, start streaming from this line.
         """
-        if self._buffer_size == 0:
+        if self.buffer_size == 0:
             self.logger.warning("{}: Cannot run job. Nothing in the buffer!".format(self.name))
             return
         
@@ -697,8 +697,8 @@ class Gerbil:
         contents. This function will empty the buffer, set the buffer
         position to 0, and reset internal state.
         """
-        del self._buffer[:]
-        self._buffer_size = 0
+        del self.buffer[:]
+        self.buffer_size = 0
         self._current_line_nr = 0
         self._callback("on_line_number_change", 0)
         self._callback("on_bufsize_change", 0)
@@ -729,7 +729,7 @@ class Gerbil:
     
     @current_line_number.setter
     def current_line_number(self, linenr):
-        if linenr < self._buffer_size:
+        if linenr < self.buffer_size:
             self._current_line_nr = linenr
             self._callback("on_line_number_change", self._current_line_nr)
         
@@ -738,7 +738,7 @@ class Gerbil:
         Return the current buffer for inspection. This is just a Python
         list.
         """
-        return self._buffer
+        return self.buffer
     
     def request_settings(self):
         """
@@ -756,8 +756,8 @@ class Gerbil:
         stream changed $ settings to Grbl, and then resume the job
         where you left off. See also `self.buffer_unstash()`.
         """
-        self._buffer_stash = list(self._buffer)
-        self._buffer_size_stash = self._buffer_size
+        self.buffer_stash = list(self.buffer)
+        self.buffer_size_stash = self.buffer_size
         self._current_line_nr_stash = self._current_line_nr
         self.job_new()
         
@@ -765,10 +765,10 @@ class Gerbil:
         """
         Restores the previous stashed buffer and position.
         """
-        self._buffer = list(self._buffer_stash)
-        self._buffer_size = self._buffer_size_stash
+        self.buffer = list(self.buffer_stash)
+        self.buffer_size = self.buffer_size_stash
         self.current_line_number = self._current_line_nr_stash
-        self._callback("on_bufsize_change", self._buffer_size)
+        self._callback("on_bufsize_change", self.buffer_size)
         
         
     def update_preprocessor_position(self):
@@ -805,7 +805,7 @@ class Gerbil:
             buf = []
             while self._streaming_src_end_reached == False:
                 self._set_next_line()
-                if self._current_line_nr < self._buffer_size:
+                if self._current_line_nr < self.buffer_size:
                     buf.append(self._current_line)
             self._set_job_finished(True)
             self._callback("on_simulation_finished", buf)
@@ -822,12 +822,12 @@ class Gerbil:
 
 
     def _set_next_line(self):
-        progress_percent = int(100 * self._current_line_nr / self._buffer_size)
+        progress_percent = int(100 * self._current_line_nr / self.buffer_size)
         self._callback("on_progress_percent", progress_percent)
         
-        if self._current_line_nr < self._buffer_size:
+        if self._current_line_nr < self.buffer_size:
             # still something in _buffer, pop it
-            line = self._buffer[self._current_line_nr].strip()
+            line = self.buffer[self._current_line_nr].strip()
             self.preprocessor.set_line(line)
             # no need for preprocessor to tidy here.
             # Gcode is already tidied when written to buffer (see _load_line_into_buffer)
@@ -1066,8 +1066,8 @@ class Gerbil:
                     self.eta += travel_dist / cf * 60
                 
             for l2 in fractionized_lines:
-                self._buffer.append(l2)
-                self._buffer_size += 1
+                self.buffer.append(l2)
+                self.buffer_size += 1
                     
             self.preprocessor.done()
         
@@ -1075,7 +1075,7 @@ class Gerbil:
         lines = string.split("\n")
         for line in lines:
             self._load_line_into_buffer(line)
-        self._callback("on_bufsize_change", self._buffer_size)
+        self._callback("on_bufsize_change", self.buffer_size)
         self._callback("on_vars_change", self.preprocessor.vars)
         self._callback("on_eta_change", self.eta)
         
