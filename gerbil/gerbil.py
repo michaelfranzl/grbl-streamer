@@ -587,6 +587,13 @@ class Gerbil:
             self.logger.error("Will not send. Firmware buffer is {:d} percent full.".format(self._rx_buffer_fill_percent))
             return
         
+        if "$#" in line:
+            # The PRB response is sent for $# as well as when probing.
+            # Regular querying of the hash state needs to be done like this,
+            # otherwise the PRB response would be interpreted as a probe answer.
+            self.hash_state_requested = True
+            return
+        
         self.preprocessor.set_line(line)
         self.preprocessor.tidy()
         self.preprocessor.parse_state()
@@ -936,6 +943,8 @@ class Gerbil:
                     self._callback("on_read", line)
                     self._on_bootup()
                     self.request_settings()
+                    self.hash_state_requested = True
+                    self.gcode_parser_state_requested = True
                         
                 else:
                     m = re.match("\$(.*)=(.*) \((.*)\)", line)
@@ -1013,8 +1022,7 @@ class Gerbil:
             self._callback("on_stateupdate", self.cmode, self.cmpos, self.cwpos)
             if self.cmode == "Idle":
                 self.update_preprocessor_position()
-                #self.gcode_parser_state_requested = True
-                #self.hash_state_requested = True
+                self.gcode_parser_state_requested = True
         
         self._last_cmode = self.cmode
         self._last_cmpos = self.cmpos
