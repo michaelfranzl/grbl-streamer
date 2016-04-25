@@ -31,7 +31,7 @@ import collections
 from queue import Queue
 
 from interface import Interface
-from preprocessor import Preprocessor
+from gcode_processor.gcode_processor import GcodeProcessor
 from callbackloghandler import CallbackLogHandler
 
 class Gerbil:
@@ -250,8 +250,8 @@ class Gerbil:
         # before they are sent out via the serial port. The preprocessor
         # keeps track of, and can dynamically change, feed rates, as well
         # as substitute variables. It has its own state and callback
-        # functions. See preprocessor.py for more information.
-        self.preprocessor = Preprocessor()
+        # functions.
+        self.preprocessor = GcodeProcessor()
         self.preprocessor.callback = self._preprocessor_callback
         
         ## @var eta
