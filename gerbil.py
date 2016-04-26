@@ -30,9 +30,10 @@ import collections
 
 from queue import Queue
 
-from interface import Interface
-from gcode_processor.gcode_processor import GcodeProcessor
-from callbackloghandler import CallbackLogHandler
+from .interface import Interface
+from .callbackloghandler import CallbackLogHandler
+
+from gcode_machine.gcode_machine import GcodeMachine
 
 class Gerbil:
     """ A universal Grbl CNC firmware interface module for Python3
@@ -251,7 +252,7 @@ class Gerbil:
         # keeps track of, and can dynamically change, feed rates, as well
         # as substitute variables. It has its own state and callback
         # functions.
-        self.preprocessor = GcodeProcessor()
+        self.preprocessor = GcodeMachine()
         self.preprocessor.callback = self._preprocessor_callback
         
         ## @var eta
@@ -595,6 +596,7 @@ class Gerbil:
             return
         
         self.preprocessor.set_line(line)
+        self.preprocessor.strip()
         self.preprocessor.tidy()
         self.preprocessor.parse_state()
         self.preprocessor.override_feed()
@@ -674,7 +676,7 @@ class Gerbil:
             1: 0
             }
         
-        self.preprocessor.feed_last = None
+        self.preprocessor.current_feed = None
 
         self._set_streaming_src_end_reached(False)
         self._set_streaming_complete(False)
@@ -709,7 +711,6 @@ class Gerbil:
         self._error = False
         self._current_line = ""
         self._current_line_sent = True
-        self.preprocessor.job_new()
         self.eta = 0
         self.travel_dist_buffer = {
             0: 0,
@@ -1029,14 +1030,14 @@ class Gerbil:
         self._last_cwpos = self.cwpos
         
     def _calculate_eta(self):
-        if self._job_finished == True or self.preprocessor.feed_last == None:
+        if self._job_finished == True or self.preprocessor.current_feed == None:
             return
         
         max_feed_rate = float(self.settings[110]["val"])
         mins = 0
         #print("TO GO {} {} {} {}".format(self.travel_dist_buffer[0], self.travel_dist_current[0], self.travel_dist_buffer[1], self.travel_dist_current[1]))
         mins += (self.travel_dist_buffer[0] - self.travel_dist_current[0]) / max_feed_rate
-        mins += (self.travel_dist_buffer[1] - self.travel_dist_current[1]) / self.preprocessor.feed_last
+        mins += (self.travel_dist_buffer[1] - self.travel_dist_current[1]) / self.preprocessor.current_feed
         self.eta = mins * 60
 
         
@@ -1047,6 +1048,7 @@ class Gerbil:
         
         for l1 in split_lines:
             self.preprocessor.set_line(l1)
+            self.preprocessor.strip()
             self.preprocessor.tidy()
             self.preprocessor.parse_state()
             self.preprocessor.find_vars()
@@ -1054,7 +1056,7 @@ class Gerbil:
             
             travel_dist = self.preprocessor.dist
             
-            cf = self.preprocessor.feed_last
+            cf = self.preprocessor.current_feed
             cmm = self.preprocessor.current_motion_mode
             if cmm != None and cf != None:
                 if cmm == 2 or cmm == 3: cmm = 1  # approximate arcs linear
@@ -1097,7 +1099,7 @@ class Gerbil:
         self._current_line = ""
         self._current_line_sent = True
         self._clear_queue()
-        self.preprocessor.onboot_init()
+        self.preprocessor.reset()
         self._callback("on_progress_percent", 0)
         self._callback("on_rx_buffer_percent", 0)
         
