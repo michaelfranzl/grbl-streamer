@@ -802,6 +802,11 @@ class Gerbil:
                 self._set_next_line()
                 if self._current_line_nr < self.buffer_size:
                     buf.append(self._current_line)
+            
+            # one line still to go
+            self._set_next_line()
+            buf.append(self._current_line)
+            
             self._set_job_finished(True)
             self._callback("on_simulation_finished", buf)
         
@@ -910,6 +915,7 @@ class Gerbil:
                         # last line
                         if self.hash_state_requested:
                             self._callback("on_hash_stateupdate", self.settings_hash)
+                            self.preprocessor.cs_offsets = self.settings_hash
                             self.hash_state_requested = False
                         else:
                             self._callback("on_probe", self.settings_hash["PRB"])
