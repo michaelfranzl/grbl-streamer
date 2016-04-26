@@ -733,13 +733,7 @@ class Gerbil:
         if linenr < self.buffer_size:
             self._current_line_nr = linenr
             self._callback("on_line_number_change", self._current_line_nr)
-        
-    def get_buffer(self):
-        """
-        Return the current buffer for inspection. This is just a Python
-        list.
-        """
-        return self.buffer
+       
     
     def request_settings(self):
         """
