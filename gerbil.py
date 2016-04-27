@@ -322,8 +322,6 @@ class Gerbil:
         
         self._counter = 0 # general-purpose counter for timing tasks inside of _poll_state
         
-        self._re_comment_all_replace = re.compile(r"[;%].*")
-        
         atexit.register(self.disconnect)
 
     
@@ -858,18 +856,12 @@ class Gerbil:
         
         self._set_streaming_complete(False)
         
-        # strip even _gerbil comments because sending comments doesn't make sense
-        # serial port bandwidth is valuable resource
-        self._current_line = re.sub(self._re_comment_all_replace, "", self._current_line)
-        if self._current_line.strip() == "":
-            self._current_line_sent = True
-            return
-        
         line_length = len(self._current_line) + 1 # +1 for \n which we will append below
         self._rx_buffer_fill.append(line_length) 
         self._rx_buffer_backlog.append(self._current_line)
         self._rx_buffer_backlog_line_number.append(self._current_line_nr)
         self._iface_write(self._current_line + "\n")
+        
         self._current_line_sent = True
         self._callback("on_line_sent", self._current_line_nr, self._current_line)
 
@@ -1043,7 +1035,6 @@ class Gerbil:
         
     def _load_line_into_buffer(self, line):
         self.preprocessor.set_line(line)
-        self.preprocessor.transform_comments()
         split_lines = self.preprocessor.split_lines()
         
         for l1 in split_lines:
