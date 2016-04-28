@@ -797,12 +797,12 @@ class Gerbil:
         elif self.target == "simulator":
             buf = []
             while self._streaming_src_end_reached == False:
-                self._set_next_line()
+                self._set_next_line(True)
                 if self._current_line_nr < self.buffer_size:
                     buf.append(self._current_line)
             
             # one line still to go
-            self._set_next_line()
+            self._set_next_line(True)
             buf.append(self._current_line)
             
             self._set_job_finished(True)
@@ -819,7 +819,7 @@ class Gerbil:
                 break
 
 
-    def _set_next_line(self):
+    def _set_next_line(self, send_comments=False):
         progress_percent = int(100 * self._current_line_nr / self.buffer_size)
         self._callback("on_progress_percent", progress_percent)
         
@@ -827,8 +827,6 @@ class Gerbil:
             # still something in _buffer, pop it
             line = self.buffer[self._current_line_nr].strip()
             self.preprocessor.set_line(line)
-            # no need for preprocessor to tidy here.
-            # Gcode is already tidied when written to buffer (see _load_line_into_buffer)
             self.preprocessor.substitute_vars()
             self.preprocessor.parse_state()
             self.preprocessor.override_feed()
@@ -837,7 +835,11 @@ class Gerbil:
                 if cmm == 2 or cmm == 3: cmm = 1 # approximate circles as lines
                 self.travel_dist_current[cmm] += self.preprocessor.dist
             
-            self._current_line = self.preprocessor.line
+            if send_comments == True:
+                self._current_line = self.preprocessor.line + self.preprocessor.comment
+            else:
+                self._current_line = self.preprocessor.line
+                
             self._current_line_sent = False
             self._current_line_nr += 1
             
@@ -856,11 +858,12 @@ class Gerbil:
         
         self._set_streaming_complete(False)
         
-        line_length = len(self._current_line) + 1 # +1 for \n which we will append below
-        self._rx_buffer_fill.append(line_length) 
-        self._rx_buffer_backlog.append(self._current_line)
-        self._rx_buffer_backlog_line_number.append(self._current_line_nr)
-        self._iface_write(self._current_line + "\n")
+        if len(self._current_line) > 0:
+            line_length = len(self._current_line) + 1 # +1 for \n which we will append below
+            self._rx_buffer_fill.append(line_length) 
+            self._rx_buffer_backlog.append(self._current_line)
+            self._rx_buffer_backlog_line_number.append(self._current_line_nr)
+            self._iface_write(self._current_line + "\n")
         
         self._current_line_sent = True
         self._callback("on_line_sent", self._current_line_nr, self._current_line)
