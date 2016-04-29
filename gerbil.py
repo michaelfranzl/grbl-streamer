@@ -703,7 +703,6 @@ class Gerbil:
         self._callback("on_line_number_change", 0)
         self._callback("on_bufsize_change", 0)
         self._set_streaming_complete(True)
-        #self._set_job_finished(True) # we don't want a callback here
         self._job_finished = True
         self._set_streaming_src_end_reached(True)
         self._error = False
@@ -742,7 +741,7 @@ class Gerbil:
         self._iface_write("$$\n")
 
     
-    def buffer_stash(self):
+    def do_buffer_stash(self):
         """
         Stash the current buffer and position away and initialize a
         new job. This is useful if you want to stop the current job,
@@ -754,7 +753,7 @@ class Gerbil:
         self._current_line_nr_stash = self._current_line_nr
         self.job_new()
         
-    def buffer_unstash(self):
+    def do_buffer_unstash(self):
         """
         Restores the previous stashed buffer and position.
         """
@@ -858,12 +857,11 @@ class Gerbil:
         
         self._set_streaming_complete(False)
         
-        if len(self._current_line) > 0:
-            line_length = len(self._current_line) + 1 # +1 for \n which we will append below
-            self._rx_buffer_fill.append(line_length) 
-            self._rx_buffer_backlog.append(self._current_line)
-            self._rx_buffer_backlog_line_number.append(self._current_line_nr)
-            self._iface_write(self._current_line + "\n")
+        line_length = len(self._current_line) + 1 # +1 for \n which we will append below
+        self._rx_buffer_fill.append(line_length) 
+        self._rx_buffer_backlog.append(self._current_line)
+        self._rx_buffer_backlog_line_number.append(self._current_line_nr)
+        self._iface_write(self._current_line + "\n")
         
         self._current_line_sent = True
         self._callback("on_line_sent", self._current_line_nr, self._current_line)
@@ -1030,7 +1028,6 @@ class Gerbil:
         
         max_feed_rate = float(self.settings[110]["val"])
         mins = 0
-        #print("TO GO {} {} {} {}".format(self.travel_dist_buffer[0], self.travel_dist_current[0], self.travel_dist_buffer[1], self.travel_dist_current[1]))
         mins += (self.travel_dist_buffer[0] - self.travel_dist_current[0]) / max_feed_rate
         mins += (self.travel_dist_buffer[1] - self.travel_dist_current[1]) / self.preprocessor.current_feed
         self.eta = mins * 60
@@ -1143,7 +1140,6 @@ class Gerbil:
 
     def _set_streaming_src_end_reached(self, a):
         self._streaming_src_end_reached = a
-        #self.logger.info("{}: Streaming source end reached: {}".format(self.name, a))
 
     def _set_streaming_complete(self, a):
         self._streaming_complete = a

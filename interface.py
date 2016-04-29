@@ -63,7 +63,7 @@ class Interface:
         """
         self.queue = queue
         self.logger.info("%s: connecting to %s", self.name, self.path)
-        self.serialport = serial.Serial(self.path, self.baud, timeout=1)
+        self.serialport = serial.Serial(self.path, self.baud, timeout=1, writeTimeout=0)
         self.serialport.flushInput()
         self.serialport.flushOutput()
         self._do_receive = True
@@ -89,9 +89,6 @@ class Interface:
         """
         if len(data) > 0:
             num_written = self.serialport.write(bytes(data,"ascii"))
-            #print("gerbil.interface write():", ''.join( [ "%02X " % ord( x ) for x in data ] ).strip())
-            #print("gerbil.interface write():", data)
-            
             return num_written
         else:
             self.logger.debug("%s: nothing to write", self.name)
