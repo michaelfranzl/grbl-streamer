@@ -144,17 +144,24 @@ class Gerbil:
     
     __version__ = "0.5.0"
     
-    def __init__(self, name="mygrbl", ifacepath="/dev/ttyACM0"):
+    def __init__(self, callback, name="mygrbl"):
         """Straightforward initialization tasks.
+        
+        @param callback
+        Set your own function that will be called when a number of
+        asynchronous events happen. Useful for UI's. The
+        default function will just log to stdout.
+        
+        This callback function will receive two arguments. The first
+        is a string giving a label of the event, and the second is a variable
+        argument list `*args` containing data pertaining to the event.
+        
+        Note that this function may be called from a Thread.
         
         @param name
         An informal name of the instance. Useful if you are running
         several instances to control several CNC machines at once.
         It is only used for logging output and UI messages.
-        
-        @param ifacepath
-        The Arduino UNO USB device node living under /dev.
-        e.g. /dev/ttyACM0
         """
         
         ## @var name
@@ -184,7 +191,20 @@ class Gerbil:
         # variables of Grbl which are obtained by sending the raw 
         # command `$G`. Will be available after setting
         # `hash_state_requested` to True.
-        self.gps = [None]*12
+        self.gps = [
+            "0", # motion mode
+            "54", # current coordinate system
+            "17", # current plane mode
+            "21", # units
+            "90", # current distance mode
+            "94", # feed rate mode
+            "0",  # program mode
+            "0",  # spindle state
+            "5",  # coolant state
+            "0",  # tool number
+            "99", # current feed
+            "0",  # spindle speed
+            ]
         
         ## @var poll_interval
         # Set an interval in seconds for polling Grbl's state via
@@ -201,7 +221,10 @@ class Gerbil:
         # Get a dictionary of Grbl's EEPROM settings which can be read
         # after sending the `$$` command, or more conveniently after
         # calling the method `request_settings()` of this class.
-        self.settings = {}
+        self.settings = {
+            130: { "val": "1000", "cmt": "width" },
+            131: { "val": "1000", "cmt": "height" }
+            }
         
         ## @var settings_hash
         # Get a dictionary of Grbl's 'hash' settings (also stored in the
@@ -209,7 +232,19 @@ class Gerbil:
         # contains things like coordinate system offsets. See Grbl
         # documentation for more info. Will be available shortly after
         # setting `hash_state_requested` to `True`.
-        self.settings_hash = {}
+        self.settings_hash = {
+            "G54": (-600, -300, 0),
+            "G55": (-400, -300, 0),
+            "G56": (-200, -300, 0),
+            "G57": (-600, -600, 0),
+            "G58": (-400, -600, 0),
+            "G59": (-200, -600, 0),
+            "G28": (0, 0, 0),
+            "G30": (0, 0, 0),
+            "G92": (0, 0, 0),
+            "TLO": 0,
+            "PRB": (0, 0, 0),
+            }
         
         ## @var gcode_parser_state_requested
         # Set this variable to `True` to receive a callback with the
@@ -274,9 +309,9 @@ class Gerbil:
             1: 0
             }
 
-        self._callback = self._default_callback
         
-        self._ifacepath = ifacepath
+        
+        self._ifacepath = None
         self._last_setting_number = 132
         
         self._last_cmode = None
@@ -322,7 +357,15 @@ class Gerbil:
         
         self._counter = 0 # general-purpose counter for timing tasks inside of _poll_state
         
+        self._callback = callback
+        
         atexit.register(self.disconnect)
+        
+        # supply defaults to GUI to make it operational
+        self._callback("on_settings_downloaded", self.settings)
+        self._callback("on_hash_stateupdate", self.settings_hash)
+        self.preprocessor.cs_offsets = self.settings_hash
+        self._callback("on_gcode_parser_stateupdate", self.gps)
 
     
     def setup_logging(self, handler=None):
@@ -352,41 +395,22 @@ class Gerbil:
             
         # attach the selected log handler
         self.logger.addHandler(self._loghandler)
-    
-    
-    @property
-    def callback(self):
-        return self._callback
-    
-    @callback.setter
-    def callback(self, callback):
-        """ Set your own function that will be called when a number of
-        asynchronous events happen. Useful for UI's. The
-        default function will just log to stdout. Note that this
-        function may be called from a Thread.
-        
-        @param callback
-        This callback function will receive two arguments. The first
-        is a string giving a label of the event, and the second is a variable
-        argument list `*args` containing data pertaining to the event.
-        """
-        self._callback = callback
-        if self._loghandler:
-            self._loghandler.callback = callback
+        self._loghandler.callback = self._callback
         
       
     def cnect(self,path=None):
         """
         Connect to the RS232 port of the Grbl controller.
         
-        @param path=None Path to the device node under `/dev`
+        @param path=None Path to the device node
         
         This is done by instantiating a RS232 class, included in this
         module, which by itself block-listens (in a thread) to
         asynchronous data sent by the Grbl controller.
         """
-        
-        if path:
+        if path == None or path.strip() == "":
+            return
+        else:
             self._ifacepath = path
         
         if self._iface == None:
@@ -718,7 +742,7 @@ class Gerbil:
             1: 0
             }
         
-        self.callback("on_vars_change", self.preprocessor.vars)
+        self._callback("on_vars_change", self.preprocessor.vars)
         self._callback("on_eta_change", 0)
     
     @property
@@ -884,7 +908,8 @@ class Gerbil:
 
     def _iface_write(self, line):
         self._callback("on_write", line)
-        num_written = self._iface.write(line)
+        if self._iface:
+            num_written = self._iface.write(line)
         
     def _onread(self):
         while self._iface_read_do == True:
