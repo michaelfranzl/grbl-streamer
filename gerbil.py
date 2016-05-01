@@ -703,6 +703,7 @@ class Gerbil:
         self._set_streaming_src_end_reached(False)
         self._set_streaming_complete(False)
         self._streaming_enabled = True
+        self._current_line_sent = True
         self._set_job_finished(False)
         self._stream()
         
@@ -950,7 +951,7 @@ class Gerbil:
                     #self.logger.debug("%s: _rx_buffer_backlog at time of error: %s", self.name,  self._rx_buffer_backlog)
                     if len(self._rx_buffer_backlog) > 0:
                         problem_command = self._rx_buffer_backlog[0]
-                        problem_line = self._rx_buffer_backlog_line_number[0] - 1
+                        problem_line = self._rx_buffer_backlog_line_number[0]
                     else:
                         problem_command = "unknown"
                         problem_line = -1
