@@ -328,7 +328,7 @@ class Gerbil:
         self._current_line_sent = True
         self._streaming_mode = None
         self._wait_empty_buffer = False
-        self._streaming_complete = True
+        self.streaming_complete = True
         self._job_finished = True
         self._streaming_src_end_reached = True
         self._streaming_enabled = True
@@ -790,8 +790,8 @@ class Gerbil:
         
     def update_preprocessor_position(self):
         # keep preprocessor informed about current working pos
-        self.preprocessor.position = list(self.cwpos)
-        self.preprocessor.target = list(self.cwpos)
+        self.preprocessor.position_m = list(self.cmpos)
+        #self.preprocessor.target = list(self.cmpos)
 
     def _preprocessor_callback(self, event, *data):
         if event == "on_preprocessor_var_undefined":
@@ -984,7 +984,7 @@ class Gerbil:
                         #self.logger.info("{}: Could not parse settings: {}".format(self.name, line))
 
     def _handle_ok(self):
-        if self._streaming_complete == False:
+        if self.streaming_complete == False:
             self._rx_buffer_fill_pop()
             if not (self._wait_empty_buffer and len(self._rx_buffer_fill) > 0):
                 self._wait_empty_buffer = False
@@ -1040,7 +1040,7 @@ class Gerbil:
             self.cmpos != self._last_cmpos or
             self.cwpos != self._last_cwpos):
             self._callback("on_stateupdate", self.cmode, self.cmpos, self.cwpos)
-            if self.cmode == "Idle":
+            if self.streaming_complete == True and self.cmode == "Idle":
                 self.update_preprocessor_position()
                 self.gcode_parser_state_requested = True
         
@@ -1168,7 +1168,7 @@ class Gerbil:
         self._streaming_src_end_reached = a
 
     def _set_streaming_complete(self, a):
-        self._streaming_complete = a
+        self.streaming_complete = a
 
     def _set_job_finished(self, a):
         self._job_finished = a
