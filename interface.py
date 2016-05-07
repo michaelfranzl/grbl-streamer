@@ -62,7 +62,9 @@ class Interface:
         An instance of Python3's `Queue()` class.
         """
         self.queue = queue
-        self.logger.info("%s: connecting to %s", self.name, self.path)
+        
+        self.logger.info("%s: connecting to %s with baudrate %i", self.name, self.path, self.baud)
+        
         self.serialport = serial.Serial(self.path, self.baud, timeout=1, writeTimeout=0)
         self.serialport.flushInput()
         self.serialport.flushOutput()

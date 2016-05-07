@@ -398,7 +398,7 @@ class Gerbil:
         self._loghandler.callback = self._callback
         
       
-    def cnect(self,path=None):
+    def cnect(self, path=None, baudrate=115200):
         """
         Connect to the RS232 port of the Grbl controller.
         
@@ -415,7 +415,7 @@ class Gerbil:
         
         if self._iface == None:
             self.logger.debug("{}: Setting up interface on {}".format(self.name, self._ifacepath))
-            self._iface = Interface("iface_" + self.name, self._ifacepath, 115200)
+            self._iface = Interface("iface_" + self.name, self._ifacepath, baudrate)
             self._iface.start(self._queue)
         else:
             self.logger.info("{}: Cannot start another interface. There is already an interface {}.".format(self.name, self._iface))
