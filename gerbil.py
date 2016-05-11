@@ -854,6 +854,7 @@ class Gerbil:
             self.preprocessor.substitute_vars()
             self.preprocessor.parse_state()
             self.preprocessor.override_feed()
+            self.preprocessor.scale_spindle()
             cmm = self.preprocessor.current_motion_mode
             if cmm != None:
                 if cmm == 2 or cmm == 3: cmm = 1 # approximate circles as lines
