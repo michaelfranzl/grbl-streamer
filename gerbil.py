@@ -260,6 +260,8 @@ class Gerbil:
         # to `False`.
         self.hash_state_requested = False
         
+        
+        
         ## @var logger
         # The logger used by this class. The default is Python's own
         # logger module. Use `setup_logging()` to attach custom
@@ -335,6 +337,7 @@ class Gerbil:
         self._error = False
         self._alarm = False
         self._incremental_streaming = False
+        self._hash_state_sent = False
         
         self.buffer = []
         self.buffer_size = 0
@@ -931,12 +934,14 @@ class Gerbil:
                 elif re.match("^\[...:.*", line):
                     self._update_hash_state(line)
                     self._callback("on_read", line)
+                        
                     if "PRB" in line:
                         # last line
-                        if self.hash_state_requested:
+                        if self.hash_state_requested == True:
+                            self._hash_state_sent = False
+                            self.hash_state_requested = False
                             self._callback("on_hash_stateupdate", self.settings_hash)
                             self.preprocessor.cs_offsets = self.settings_hash
-                            self.hash_state_requested = False
                         else:
                             self._callback("on_probe", self.settings_hash["PRB"])
                        
@@ -963,8 +968,8 @@ class Gerbil:
                 elif "Grbl " in line:
                     self._callback("on_read", line)
                     self._on_bootup()
-                    self.request_settings()
                     self.hash_state_requested = True
+                    self.request_settings()
                     self.gcode_parser_state_requested = True
                         
                 else:
@@ -1163,7 +1168,9 @@ class Gerbil:
         self._iface_write("$G\n")
 
     def get_hash_state(self):
-        self._iface_write("$#\n")
+        if self._hash_state_sent == False:
+            self._iface_write("$#\n")
+            self._hash_state_sent = True
 
     def _set_streaming_src_end_reached(self, a):
         self._streaming_src_end_reached = a
