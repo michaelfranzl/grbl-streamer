@@ -311,7 +311,9 @@ class Gerbil:
             1: 0
             }
 
-        
+        ## @var is_standstill
+        # If the machine is currently not moving
+        self.is_standstill = False
         
         self._ifacepath = None
         self._last_setting_number = 132
@@ -319,6 +321,8 @@ class Gerbil:
         self._last_cmode = None
         self._last_cmpos = (0, 0, 0)
         self._last_cwpos = (0, 0, 0)
+        
+        self._standstill_watchdog_increment = 0
         
         self._rx_buffer_size = 128
         self._rx_buffer_fill = []
@@ -609,8 +613,9 @@ class Gerbil:
         A string of a single G-Code command to be sent. Doesn't have to
         be \n terminated.
         """
-        if self._rx_buffer_fill_percent > 0:
-            self.logger.error("Will not send. Firmware buffer is {:d} percent full.".format(self._rx_buffer_fill_percent))
+        bytes_in_firmware_buffer = sum(self._rx_buffer_fill)
+        if bytes_in_firmware_buffer > 0:
+            self.logger.error("Will not send. Firmware buffer has {:d} unprocessed bytes in it.".format(bytes_in_firmware_buffer))
             return
         
         if "$#" in line:
@@ -1049,7 +1054,21 @@ class Gerbil:
             if self.streaming_complete == True and self.cmode == "Idle":
                 self.update_preprocessor_position()
                 self.gcode_parser_state_requested = True
+                
+            if self.is_standstill == True:
+                self._standstill_watchdog_increment = 0
+                self.is_standstill = False
+                self._callback("on_movement")
+            
+        else:
+            # no change in positions
+            self._standstill_watchdog_increment += 1
         
+        if self.is_standstill == False and self._standstill_watchdog_increment > 10:
+            # machine is not moving
+            self.is_standstill = True
+            self._callback("on_standstill")
+            
         self._last_cmode = self.cmode
         self._last_cmpos = self.cmpos
         self._last_cwpos = self.cwpos
