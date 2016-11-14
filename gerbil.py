@@ -518,6 +518,7 @@ class Gerbil:
         """
         if self.is_connected() == False: return
         self._poll_keep_alive = True
+        self._last_cmode = None
         if self._thread_polling == None:
             self._thread_polling = threading.Thread(target=self._poll_state)
             self._thread_polling.start()
