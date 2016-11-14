@@ -498,6 +498,7 @@ class Gerbil:
         Immediately send the kill alarm command ($X) to Grbl.
         """
         self._iface_write("$X\n")
+        self._alarm = False
         
         
     def homing(self):
@@ -615,7 +616,11 @@ class Gerbil:
         """
         bytes_in_firmware_buffer = sum(self._rx_buffer_fill)
         if bytes_in_firmware_buffer > 0:
-            self.logger.error("Will not send. Firmware buffer has {:d} unprocessed bytes in it.".format(bytes_in_firmware_buffer))
+            self.logger.error("Firmware buffer has {:d} unprocessed bytes in it. Will not send {}".format(bytes_in_firmware_buffer, line))
+            return
+        
+        if self._alarm == True:
+            self.logger.error("Grbl is in ALARM state. Will not send {}.".format(line))
             return
         
         if "$#" in line:
@@ -953,6 +958,7 @@ class Gerbil:
                         
                     
                 elif "ALARM" in line:
+                    self._alarm = True
                     self._callback("on_read", line)
                     self._callback("on_alarm", line)
                     
