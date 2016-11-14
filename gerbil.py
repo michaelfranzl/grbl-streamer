@@ -339,7 +339,6 @@ class Gerbil:
         self._streaming_src_end_reached = True
         self._streaming_enabled = True
         self._error = False
-        self._alarm = False
         self._incremental_streaming = False
         self._hash_state_sent = False
         
@@ -498,7 +497,6 @@ class Gerbil:
         Immediately send the kill alarm command ($X) to Grbl.
         """
         self._iface_write("$X\n")
-        self._alarm = False
         
         
     def homing(self):
@@ -620,7 +618,7 @@ class Gerbil:
             self.logger.error("Firmware buffer has {:d} unprocessed bytes in it. Will not send {}".format(bytes_in_firmware_buffer, line))
             return
         
-        if self._alarm == True:
+        if self.cmode == "Alarm":
             self.logger.error("Grbl is in ALARM state. Will not send {}.".format(line))
             return
         
@@ -959,7 +957,8 @@ class Gerbil:
                         
                     
                 elif "ALARM" in line:
-                    self._alarm = True
+                    self.cmode = "Alarm" # grbl for some reason doesn't respond to ? polling when alarm due to soft limits
+                    self._callback("on_stateupdate", self.cmode, self.cmpos, self.cwpos)
                     self._callback("on_read", line)
                     self._callback("on_alarm", line)
                     
