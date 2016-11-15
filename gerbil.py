@@ -1056,19 +1056,21 @@ class Gerbil:
         if (self.cmode != self._last_cmode or
             self.cmpos != self._last_cmpos or
             self.cwpos != self._last_cwpos):
-            self._callback("on_stateupdate", self.cmode, self.cmpos, self.cwpos)
-            if self.streaming_complete == True and self.cmode == "Idle":
-                self.update_preprocessor_position()
-                self.gcode_parser_state_requested = True
-                
+                self._callback("on_stateupdate", self.cmode, self.cmpos, self.cwpos)
+                if self.streaming_complete == True and self.cmode == "Idle":
+                    self.update_preprocessor_position()
+                    self.gcode_parser_state_requested = True
+            
+
+        if (self.cmpos != self._last_cmpos):
             if self.is_standstill == True:
                 self._standstill_watchdog_increment = 0
                 self.is_standstill = False
                 self._callback("on_movement")
-            
         else:
             # no change in positions
             self._standstill_watchdog_increment += 1
+            
         
         if self.is_standstill == False and self._standstill_watchdog_increment > 10:
             # machine is not moving
@@ -1147,6 +1149,7 @@ class Gerbil:
         self._current_line = ""
         self._current_line_sent = True
         self._clear_queue()
+        self.is_standstill = False
         self.preprocessor.reset()
         self._callback("on_progress_percent", 0)
         self._callback("on_rx_buffer_percent", 0)
