@@ -622,6 +622,10 @@ class Gerbil:
             self.logger.error("Grbl is in ALARM state. Will not send {}.".format(line))
             return
         
+        if self.cmode == "Hold":
+            self.logger.error("Grbl is in HOLD state. Will not send {}.".format(line))
+            return
+        
         if "$#" in line:
             # The PRB response is sent for $# as well as when probing.
             # Regular querying of the hash state needs to be done like this,
@@ -1196,6 +1200,11 @@ class Gerbil:
         self._iface_write("$G\n")
 
     def get_hash_state(self):
+        if self.cmode == "Hold":
+            self.hash_state_requested = False
+            self.logger.info("{}: $# command not supported in Hold mode.".format(self.name))
+            return
+        
         if self._hash_state_sent == False:
             self._iface_write("$#\n")
             self._hash_state_sent = True
