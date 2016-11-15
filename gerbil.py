@@ -212,11 +212,6 @@ class Gerbil:
         # than 0.2 (5 per second).
         self.poll_interval = 0.2
         
-        ## @var eta_calc_interval
-        # The interval that gerbil will make callback `on_eta_chage` delivering
-        # the ETA as seconds
-        self.eta_calc_interval = 5
-        
         ## @var settings
         # Get a dictionary of Grbl's EEPROM settings which can be read
         # after sending the `$$` command, or more conveniently after
@@ -292,24 +287,13 @@ class Gerbil:
         self.preprocessor = GcodeMachine()
         self.preprocessor.callback = self._preprocessor_callback
         
-        ## @var eta
-        # The number of seconds neccessary to process the entire buffer
-        self.eta = 0
-        
         ## @var travel_dist_buffer
         # The total distance of all G-Codes in the buffer.
-        # 1st element for G0, 2nd element for G1
-        self.travel_dist_buffer = {
-            0: 0,
-            1: 0
-            }
+        self.travel_dist_buffer = {}
         
         ## @var travel_dist_current
         # The currently travelled distance. Can be used to calculate ETA.
-        self.travel_dist_current = {
-            0: 0,
-            1: 0
-            }
+        self.travel_dist_current = {}
 
         ## @var is_standstill
         # If the machine is currently not moving
@@ -709,10 +693,7 @@ class Gerbil:
         if linenr:
             self.current_line_number = linenr
             
-        self.travel_dist_current = {
-            0: 0,
-            1: 0
-            }
+        self.travel_dist_current = {}
         
         self.preprocessor.current_feed = None
 
@@ -749,18 +730,10 @@ class Gerbil:
         self._error = False
         self._current_line = ""
         self._current_line_sent = True
-        self.eta = 0
-        self.travel_dist_buffer = {
-            0: 0,
-            1: 0
-            }
-        self.travel_dist_current = {
-            0: 0,
-            1: 0
-            }
+        self.travel_dist_buffer = {}
+        self.travel_dist_current = {}
         
         self._callback("on_vars_change", self.preprocessor.vars)
-        self._callback("on_eta_change", 0)
     
     @property
     def current_line_number(self):
@@ -871,11 +844,7 @@ class Gerbil:
             self.preprocessor.parse_state()
             self.preprocessor.override_feed()
             self.preprocessor.scale_spindle()
-            cmm = self.preprocessor.current_motion_mode
-            if cmm != None:
-                if cmm == 2 or cmm == 3: cmm = 1 # approximate circles as lines
-                self.travel_dist_current[cmm] += self.preprocessor.dist
-            
+
             if send_comments == True:
                 self._current_line = self.preprocessor.line + self.preprocessor.comment
             else:
@@ -1085,16 +1054,6 @@ class Gerbil:
         self._last_cmpos = self.cmpos
         self._last_cwpos = self.cwpos
         
-    def _calculate_eta(self):
-        if self._job_finished == True or self.preprocessor.current_feed == None:
-            return
-        
-        max_feed_rate = float(self.settings[110]["val"])
-        mins = 0
-        mins += (self.travel_dist_buffer[0] - self.travel_dist_current[0]) / max_feed_rate
-        mins += (self.travel_dist_buffer[1] - self.travel_dist_current[1]) / self.preprocessor.current_feed
-        self.eta = mins * 60
-
         
     def _load_line_into_buffer(self, line):
         self.preprocessor.set_line(line)
@@ -1108,19 +1067,6 @@ class Gerbil:
             self.preprocessor.find_vars()
             fractionized_lines = self.preprocessor.fractionize()
             
-            travel_dist = self.preprocessor.dist
-            
-            cf = self.preprocessor.current_feed
-            cmm = self.preprocessor.current_motion_mode
-            if cmm != None and cf != None:
-                if cmm == 2 or cmm == 3: cmm = 1  # approximate arcs linear
-                self.travel_dist_buffer[cmm] += self.preprocessor.dist
-                if cmm == 0:
-                    # based on x max rate
-                    self.eta += travel_dist / float(self.settings[110]["val"]) * 60
-                else:
-                    self.eta += travel_dist / cf * 60
-                
             for l2 in fractionized_lines:
                 self.buffer.append(l2)
                 self.buffer_size += 1
@@ -1133,7 +1079,6 @@ class Gerbil:
             self._load_line_into_buffer(line)
         self._callback("on_bufsize_change", self.buffer_size)
         self._callback("on_vars_change", self.preprocessor.vars)
-        self._callback("on_eta_change", self.eta)
         
     def is_connected(self):
         if self.connected != True:
@@ -1169,15 +1114,6 @@ class Gerbil:
     def _poll_state(self):
         while self._poll_keep_alive:
             self._counter += 1
-            
-            if self.cmode == "Run" and self._counter % (1 / self.poll_interval) == 0:
-                # update eta every second
-                self.eta -= 1
-                if self.eta < 0: self.eta = 0
-                self._callback("on_eta_change", self.eta)
-                
-            if self._counter % (self.eta_calc_interval / self.poll_interval) == 0:
-                self._calculate_eta()
             
             if self.hash_state_requested:
                 self.get_hash_state()
