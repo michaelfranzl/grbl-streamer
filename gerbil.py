@@ -319,7 +319,7 @@ class Gerbil:
         self._streaming_mode = None
         self._wait_empty_buffer = False
         self.streaming_complete = True
-        self._job_finished = True
+        self.job_finished = True
         self._streaming_src_end_reached = True
         self._streaming_enabled = True
         self._error = False
@@ -667,7 +667,7 @@ class Gerbil:
         @param filename
         A string giving the relative or absolute file path
         """
-        if self._job_finished == False:
+        if self.job_finished == False:
             self.logger.warning("{}: Job must be finished before you can load a file".format(self.name))
             return
         
@@ -695,7 +695,7 @@ class Gerbil:
             
         self.travel_dist_current = {}
         
-        self.preprocessor.current_feed = None
+        #self.preprocessor.current_feed = None
 
         self._set_streaming_src_end_reached(False)
         self._set_streaming_complete(False)
@@ -725,7 +725,7 @@ class Gerbil:
         self._callback("on_line_number_change", 0)
         self._callback("on_bufsize_change", 0)
         self._set_streaming_complete(True)
-        self._job_finished = True
+        self.job_finished = True
         self._set_streaming_src_end_reached(True)
         self._error = False
         self._current_line = ""
@@ -1152,7 +1152,7 @@ class Gerbil:
         self.streaming_complete = a
 
     def _set_job_finished(self, a):
-        self._job_finished = a
+        self.job_finished = a
         if a == True:
             self._callback("on_job_completed")
 
