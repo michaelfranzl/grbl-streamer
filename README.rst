@@ -31,12 +31,12 @@ I believe that the code is well documented. This module is for developers for in
 Usage example
 --------
 
-Make work directory:
+Make work directory::
 
     mkdir ~/work
     cd ~/work
 
-Get sources:
+Get sources::
 
     git clone git@github.com:michaelfranzl/gerbil.git
     git clone git@github.com:michaelfranzl/gcode_machine.git
