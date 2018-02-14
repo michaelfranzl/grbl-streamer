@@ -31,17 +31,23 @@ I believe that the code is well documented. This module is for developers for in
 Usage example
 --------
 
-Change directory::
+Make work directory:
 
-    cd gerbil/gerbil
+    mkdir ~/work
+    cd ~/work
 
-Go into a Python3 console and import the class Gerbil::
+Get sources:
 
-    from gerbil import Gerbil
-    
-Next, instantiate an instance of the Gerbil class::
+    git clone git@github.com:michaelfranzl/gerbil.git
+    git clone git@github.com:michaelfranzl/gcode_machine.git
 
-    grbl = Gerbil("my_grbl", "/dev/ttyACM0")
+Go into a Python3 console::
+
+    python3
+
+... and import the class Gerbil::
+
+    from gerbil.gerbil import Gerbil
     
 Next, copy-paste the following code into the console. This is your callback function that Gerbil will call asynchronously whenever an event happens. The following example function does nothing else than logging to stdout. In a real GUI application, you would update numbers, sliders etc. from this function::
 
@@ -51,10 +57,10 @@ Next, copy-paste the following code into the console. This is your callback func
             args.append(str(d))
         print("MY CALLBACK: event={} data={}".format(eventstring.ljust(30), ", ".join(args)))
         # Now, do something interesting with these callbacks
+    
+Next, instantiate an instance of the Gerbil class::
 
-Now it is time to tell Gerbil to call above function for all events::
-
-    grbl.callback = my_callback
+    grbl = Gerbil(my_callback)
     
 Next, we tell Gerbil to use its default log handler, which, instead of printing to stdout directly, will also call above `my_callback` function with eventstring `on_log`. You could use this, for example, to output the logging strings in a GUI window::
 
@@ -62,7 +68,7 @@ Next, we tell Gerbil to use its default log handler, which, instead of printing 
     
 We now can connect to the grbl firmware, the actual CNC machine::
 
-    grbl.cnect()
+    grbl.cnect("/dev/ttyUSB0", 57600) # or /dev/ttyACM0
     
 We will poll every half second for the state of the CNC machine (working position, etc.)::
 
