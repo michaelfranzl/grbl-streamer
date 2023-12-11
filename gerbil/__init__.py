@@ -912,7 +912,11 @@ class Gerbil:
                 elif re.match("^\[G[0123] .*", line):
                     self._update_gcode_parser_state(line)
                     self._callback("on_read", line)
-                    
+                
+                elif line == "[MSG:Caution: Unlocked]":
+                    # nothing to do here
+                    pass
+                
                 elif re.match("^\[...:.*", line):
                     self._update_hash_state(line)
                     self._callback("on_read", line)
@@ -1020,11 +1024,33 @@ class Gerbil:
         
     def _update_state(self, line):
         m = re.match("<(.*?),MPos:(.*?),WPos:(.*?)>", line)
-        self.cmode = m.group(1)
-        mpos_parts = m.group(2).split(",")
-        wpos_parts = m.group(3).split(",")
-        self.cmpos = (float(mpos_parts[0]), float(mpos_parts[1]), float(mpos_parts[2]))
-        self.cwpos = (float(wpos_parts[0]), float(wpos_parts[1]), float(wpos_parts[2]))
+        if m is not None:
+            # GRBL v0.9
+            self.cmode = m.group(1)
+            mpos_parts = m.group(2).split(",")
+            wpos_parts = m.group(3).split(",")
+            self.cmpos = (float(mpos_parts[0]), float(mpos_parts[1]), float(mpos_parts[2]))
+            self.cwpos = (float(wpos_parts[0]), float(wpos_parts[1]), float(wpos_parts[2]))
+        else:
+            # GRBL v1.1
+            # <Idle|MPos:0.0000,0.0000,0.0000|Bf:15,128|FS:0.0,0|WCO:0.0000,0.0000,0.0000>
+            m = re.match("<(.*?)\|MPos:(.*?)\|", line)
+            if m is not None:
+                # machine position reported (adjustable via $10)
+                self.cmode = m.group(1)
+                mpos_parts = m.group(2).split(",")
+                self.cmpos = (float(mpos_parts[0]), float(mpos_parts[1]), float(mpos_parts[2]))
+            else:
+                m = re.match("<(.*?)\|WPos:(.*?)\|", line)
+                if m is not None:
+                    # work position reported (adjustble via $10)
+                    self.cmode = m.group(1)
+                    wpos_parts = m.group(2).split(",")
+                    self.cwpos = (float(wpos_parts[0]), float(wpos_parts[1]), float(wpos_parts[2]))
+                else:
+                    self.logger.error("{}: Could not parse MPos or WPos: '{}'".format(self.name, line))
+                    return
+        # if we made it here, we parsed MPos or WPos or both
 
         if (self.cmode != self._last_cmode or
             self.cmpos != self._last_cmpos or
