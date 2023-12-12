@@ -1,0 +1,15 @@
+[project]
+name = "gerbil"
+version = "0.0.1"
+description = "Universal and reusable Grbl CNC firmware interface module for Python3"
+readme = "README.rst"
+requires-python = ">=3.9"
+dependencies = [
+    "pyserial",
+    "gcode_machine",
+]
+license = {file = "LICENSE"}
+
+[tool.setuptools]
+packages = ["gerbil"]
+

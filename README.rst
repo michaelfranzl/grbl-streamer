@@ -47,7 +47,7 @@ Go into a Python3 console::
 
 ... and import the class Gerbil::
 
-    from gerbil.gerbil import Gerbil
+    from gerbil import Gerbil
     
 Next, copy-paste the following code into the console. This is your callback function that Gerbil will call asynchronously whenever an event happens. The following example function does nothing else than logging to stdout. In a real GUI application, you would update numbers, sliders etc. from this function::
 
