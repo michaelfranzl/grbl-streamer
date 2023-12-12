@@ -33,7 +33,7 @@ from queue import Queue
 from .interface import Interface
 from .callbackloghandler import CallbackLogHandler
 
-from gcode_machine.gcode_machine import GcodeMachine
+from gcode_machine import GcodeMachine
 
 class Gerbil:
     """ A universal Grbl CNC firmware interface module for Python3
@@ -1184,3 +1184,4 @@ class Gerbil:
 
     def _default_callback(self, status, *args):
         print("GERBIL DEFAULT CALLBACK", status, args)
+
