@@ -26,50 +26,50 @@ import logging
 class Interface:
     """Implements opening, closing, writing and threaded reading from the serial port. Read data are put into a Thread Queue.
     """
-    
+
     def __init__(self, name, path, baud=115200):
         """Straightforward initialization tasks.
-        
+
         @param name
         An informal name of the instance. Useful if you are running
         several instances to control several serial ports at once.
         It is only used for logging output and UI messages.
-        
+
         @param path
         The serial port device node living under /dev.
         e.g. /dev/ttyACM0 or /dev/ttyUSB0
-        
+
         @param baud
         The baud rate. Default is 115200 for Grbl > v0.9i.
         """
-        
+
         self.name = name
         self.path = path
         self.baud = baud
         self.queue = None
         self.logger = logging.getLogger("gerbil.interface")
-        
+
         self._buf_receive = ""
         self._do_receive = False
-        
+
     def start(self, queue):
         """
         Open the device node and start a Thread for reading.
-        
+
         @param queue
         An instance of Python3's `Queue()` class.
         """
         self.queue = queue
-        
+
         self.logger.info("%s: connecting to %s with baudrate %i", self.name, self.path, self.baud)
-        
+
         self.serialport = serial.Serial(self.path, self.baud, parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE, bytesize=serial.EIGHTBITS, timeout=1, writeTimeout=0)
         self.serialport.flushInput()
         self.serialport.flushOutput()
         self._do_receive = True
         self.serial_thread = threading.Thread(target=self._receiving)
         self.serial_thread.start()
-        
+
     def stop(self):
         """
         Close the device node and shut down the reading Thread.
@@ -82,7 +82,7 @@ class Interface:
         self.serialport.flushInput()
         self.serialport.flushOutput()
         self.serialport.close()
-        
+
     def write(self, data):
         """
         Write `data` to the device node. If data is empty, no write is performed. The number of written characters is returned.
@@ -106,7 +106,7 @@ class Interface:
         except UnicodeDecodeError:
             self.logger.info("%s: Received a non-ascii byte. Probably junk. Dropping it.", self.name)
             asci = ""
-            
+
         for i in range(0, len(asci)):
             char = asci[i]
             self._buf_receive += char
