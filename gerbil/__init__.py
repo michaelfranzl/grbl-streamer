@@ -24,8 +24,6 @@ import time
 import re
 import threading
 import atexit
-import os
-import collections
 
 from queue import Queue
 
