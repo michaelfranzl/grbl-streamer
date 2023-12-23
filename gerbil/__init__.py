@@ -987,18 +987,18 @@ class Gerbil:
     def _update_gcode_parser_state(self, line):
         m = re.match("\[G(\d) G(\d\d) G(\d\d) G(\d\d) G(\d\d) G(\d\d) M(\d) M(\d) M(\d) T(\d) F([\d.-]*?) S([\d.-]*?)\]", line)
         if m:
-            self.gps[0] = m.group(1) # motionmode
-            self.gps[1] = m.group(2) # current coordinate system
-            self.gps[2] = m.group(3) # plane
-            self.gps[3] = m.group(4) # units
-            self.gps[4] = m.group(5) # dist
-            self.gps[5] = m.group(6) # feed rate mode
-            self.gps[6] = m.group(7) # program mode
-            self.gps[7] = m.group(8) # spindle state
-            self.gps[8] = m.group(9) # coolant state
-            self.gps[9] = m.group(10) # tool number
-            self.gps[10] = m.group(11) # current feed
-            self.gps[11] = m.group(12) # current rpm
+            self.gps[0] = m.group(1)  # motionmode
+            self.gps[1] = m.group(2)  # current coordinate system
+            self.gps[2] = m.group(3)  # plane
+            self.gps[3] = m.group(4)  # units
+            self.gps[4] = m.group(5)  # dist
+            self.gps[5] = m.group(6)  # feed rate mode
+            self.gps[6] = m.group(7)  # program mode
+            self.gps[7] = m.group(8)  # spindle state
+            self.gps[8] = m.group(9)  # coolant state
+            self.gps[9] = m.group(10)  # tool number
+            self.gps[10] = m.group(11)  # current feed
+            self.gps[11] = m.group(12)  # current rpm
             self._callback("on_gcode_parser_stateupdate", self.gps)
 
             self.update_preprocessor_position()
