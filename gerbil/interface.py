@@ -63,7 +63,15 @@ class Interface:
 
         self.logger.info("%s: connecting to %s with baudrate %i", self.name, self.path, self.baud)
 
-        self.serialport = serial.Serial(self.path, self.baud, parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE, bytesize=serial.EIGHTBITS, timeout=1, writeTimeout=0)
+        self.serialport = serial.Serial(
+                self.path,
+                self.baud,
+                parity=serial.PARITY_NONE,
+                stopbits=serial.STOPBITS_ONE,
+                bytesize=serial.EIGHTBITS,
+                timeout=1,
+                writeTimeout=0,
+        )
         self.serialport.flushInput()
         self.serialport.flushOutput()
         self._do_receive = True
