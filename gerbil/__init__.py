@@ -204,7 +204,7 @@ class Gerbil:
             "0",  # tool number
             "99",  # current feed
             "0",  # spindle speed
-            ]
+        ]
 
         # @var poll_interval
         # Set an interval in seconds for polling Grbl's state via
@@ -217,9 +217,9 @@ class Gerbil:
         # after sending the `$$` command, or more conveniently after
         # calling the method `request_settings()` of this class.
         self.settings = {
-            130: { "val": "1000", "cmt": "width" },
-            131: { "val": "1000", "cmt": "height" }
-            }
+            130: {"val": "1000", "cmt": "width"},
+            131: {"val": "1000", "cmt": "height"}
+        }
 
         # @var settings_hash
         # Get a dictionary of Grbl's 'hash' settings (also stored in the
@@ -421,7 +421,8 @@ class Gerbil:
         connection. For a safe shutdown of Grbl you may also want to
         call `softreset()` before you call this method.
         """
-        if self.is_connected() == False: return
+        if self.is_connected() == False:
+            return
 
         self.poll_stop()
 
@@ -449,7 +450,8 @@ class Gerbil:
         """
         An alias for `softreset()`.
         """
-        if self.is_connected() == False: return
+        if self.is_connected() == False:
+            return
         self.softreset()
 
     def hold(self):
@@ -457,14 +459,16 @@ class Gerbil:
         Immediately sends the feed hold command (exclamation mark)
         to Grbl.
         """
-        if self.is_connected() == False: return
+        if self.is_connected() == False:
+            return
         self._iface_write("!")
 
     def resume(self):
         """
         Immediately send the resume command (tilde) to Grbl.
         """
-        if self.is_connected() == False: return
+        if self.is_connected() == False:
+            return
         self._iface_write("~")
 
     def killalarm(self):
@@ -487,7 +491,8 @@ class Gerbil:
         string containing 3 data parameters self.cmode, self.cmpos,
         self.cwpos, but only when Grbl's state CHANGES.
         """
-        if self.is_connected() == False: return
+        if self.is_connected() == False:
+            return
         self._poll_keep_alive = True
         self._last_cmode = None
         if self._thread_polling == None:
@@ -502,7 +507,8 @@ class Gerbil:
         """
         Stops polling that has been started with `poll_start()`
         """
-        if self.is_connected() == False: return
+        if self.is_connected() == False:
+            return
         if self._thread_polling != None:
             self._poll_keep_alive = False
             self.logger.debug("{}: Please wait until polling thread has joined...".format(self.name))
@@ -942,9 +948,9 @@ class Gerbil:
                         val = m.group(2)
                         comment = m.group(3)
                         self.settings[key] = {
-                            "val" : val,
-                            "cmt" : comment
-                            }
+                            "val": val,
+                            "cmt": comment
+                        }
                         self._callback("on_read", line)
                         if key == self._last_setting_number:
                             self._callback("on_settings_downloaded", self.settings)
