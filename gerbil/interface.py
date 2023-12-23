@@ -23,6 +23,7 @@ import time
 import threading
 import logging
 
+
 class Interface:
     """Implements opening, closing, writing and threaded reading from the serial port. Read data are put into a Thread Queue.
     """
@@ -88,7 +89,7 @@ class Interface:
         Write `data` to the device node. If data is empty, no write is performed. The number of written characters is returned.
         """
         if len(data) > 0:
-            num_written = self.serialport.write(bytes(data,"ascii"))
+            num_written = self.serialport.write(bytes(data, "ascii"))
             return num_written
         else:
             self.logger.debug("%s: nothing to write", self.name)
