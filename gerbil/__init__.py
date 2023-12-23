@@ -164,55 +164,55 @@ class Gerbil:
         It is only used for logging output and UI messages.
         """
 
-        ## @var name
+        # @var name
         # Set an informal name of the instance. Useful if you are
         # running several instances to control several CNC machines at
         # once. It is only used for logging output and UI messages.
         self.name = name
 
-        ## @var cmode
+        # @var cmode
         # Get Grbl's current mode.
         # Will be strings 'Idle', 'Check', 'Run'
         self.cmode = None
 
-        ## @var cmpos
+        # @var cmpos
         # Get a 3-tuple containing the current coordinates relative
         # to the machine origin.
         self.cmpos = (0, 0, 0)
 
-        ## @var cwpos
+        # @var cwpos
         # Get a 3-tuple containing the current working coordinates.
         # Working coordinates are relative to the currently selected
         # coordinate system.
         self.cwpos = (0, 0, 0)
 
-        ## @var gps
+        # @var gps
         # Get list of 12 elements containing the 12 Gcode Parser State
         # variables of Grbl which are obtained by sending the raw
         # command `$G`. Will be available after setting
         # `hash_state_requested` to True.
         self.gps = [
-            "0", # motion mode
-            "54", # current coordinate system
-            "17", # current plane mode
-            "21", # units
-            "90", # current distance mode
-            "94", # feed rate mode
+            "0",  # motion mode
+            "54",  # current coordinate system
+            "17",  # current plane mode
+            "21",  # units
+            "90",  # current distance mode
+            "94",  # feed rate mode
             "0",  # program mode
             "0",  # spindle state
             "5",  # coolant state
             "0",  # tool number
-            "99", # current feed
+            "99",  # current feed
             "0",  # spindle speed
             ]
 
-        ## @var poll_interval
+        # @var poll_interval
         # Set an interval in seconds for polling Grbl's state via
         # the `?` command. The Grbl Wiki recommends to set this no lower
         # than 0.2 (5 per second).
         self.poll_interval = 0.2
 
-        ## @var settings
+        # @var settings
         # Get a dictionary of Grbl's EEPROM settings which can be read
         # after sending the `$$` command, or more conveniently after
         # calling the method `request_settings()` of this class.
@@ -221,7 +221,7 @@ class Gerbil:
             131: { "val": "1000", "cmt": "height" }
             }
 
-        ## @var settings_hash
+        # @var settings_hash
         # Get a dictionary of Grbl's 'hash' settings (also stored in the
         # EEPROM) which can be read after sending the `$#` command. It
         # contains things like coordinate system offsets. See Grbl
@@ -239,25 +239,23 @@ class Gerbil:
             "G92": (0, 0, 0),
             "TLO": 0,
             "PRB": (0, 0, 0),
-            }
+        }
 
-        ## @var gcode_parser_state_requested
+        # @var gcode_parser_state_requested
         # Set this variable to `True` to receive a callback with the
         # event string "on_gcode_parser_stateupdate" containing
         # data that Grbl sends after receiving the `$G` command.
         # After the callback, this variable reverts to `False`.
-        self.gcode_parser_state_requested  = False
+        self.gcode_parser_state_requested = False
 
-        ## @var hash_state_requested
+        # @var hash_state_requested
         # Set this variable to `True` to receive a callback with the
         # event string "on_hash_stateupdate" containing
         # the requested data. After the callback, this variable reverts
         # to `False`.
         self.hash_state_requested = False
 
-
-
-        ## @var logger
+        # @var logger
         # The logger used by this class. The default is Python's own
         # logger module. Use `setup_logging()` to attach custom
         # log handlers.
@@ -265,7 +263,7 @@ class Gerbil:
         self.logger.setLevel(5)
         self.logger.propagate = False
 
-        ## @var target
+        # @var target
         # Set this to change the output target. Default is "firmware"
         # which means the serial port. Another target is "simulator",
         # you will receive a callback with even string
@@ -274,11 +272,11 @@ class Gerbil:
         # TODO: Add "file" target.
         self.target = "firmware"
 
-        ## @var connected
+        # @var connected
         # `True` when connected to Grbl (after boot), otherwise `False`
         self.connected = False
 
-        ## @var preprocessor
+        # @var preprocessor
         # All G-code commands will go through the preprocessor
         # before they are sent out via the serial port. The preprocessor
         # keeps track of, and can dynamically change, feed rates, as well
@@ -287,15 +285,15 @@ class Gerbil:
         self.preprocessor = GcodeMachine()
         self.preprocessor.callback = self._preprocessor_callback
 
-        ## @var travel_dist_buffer
+        # @var travel_dist_buffer
         # The total distance of all G-Codes in the buffer.
         self.travel_dist_buffer = {}
 
-        ## @var travel_dist_current
+        # @var travel_dist_current
         # The currently travelled distance. Can be used to calculate ETA.
         self.travel_dist_current = {}
 
-        ## @var is_standstill
+        # @var is_standstill
         # If the machine is currently not moving
         self.is_standstill = False
 
@@ -345,7 +343,7 @@ class Gerbil:
 
         self._loghandler = None
 
-        self._counter = 0 # general-purpose counter for timing tasks inside of _poll_state
+        self._counter = 0  # general-purpose counter for timing tasks inside of _poll_state
 
         self._callback = callback
 
@@ -444,7 +442,7 @@ class Gerbil:
         """
         Immediately sends `Ctrl-X` to Grbl.
         """
-        self._iface.write("\x18") # Ctrl-X
+        self._iface.write("\x18")  # Ctrl-X
         self.update_preprocessor_position()
 
     def abort(self):
@@ -678,7 +676,7 @@ class Gerbil:
 
         self.travel_dist_current = {}
 
-        #self.preprocessor.current_feed = None
+        # self.preprocessor.current_feed = None
 
         self._set_streaming_src_end_reached(False)
         self._set_streaming_complete(False)
@@ -758,7 +756,7 @@ class Gerbil:
     def update_preprocessor_position(self):
         # keep preprocessor informed about current working pos
         self.preprocessor.position_m = list(self.cmpos)
-        #self.preprocessor.target = list(self.cmpos)
+        # self.preprocessor.target = list(self.cmpos)
 
     def _preprocessor_callback(self, event, *data):
         if event == "on_preprocessor_var_undefined":
@@ -804,7 +802,7 @@ class Gerbil:
             if self._current_line_sent == True:
                 self._set_next_line()
 
-            if self._streaming_src_end_reached == False and  self._rx_buf_can_receive_current_line():
+            if self._streaming_src_end_reached == False and self._rx_buf_can_receive_current_line():
                 self._send_current_line()
             else:
                 break
@@ -845,18 +843,20 @@ class Gerbil:
 
         self._set_streaming_complete(False)
 
-        line_length = len(self._current_line) + 1 # +1 for \n which we will append below
+        # +1 for \n which we will append below
+        line_length = len(self._current_line) + 1
         self._rx_buffer_fill.append(line_length)
         self._rx_buffer_backlog.append(self._current_line)
         self._rx_buffer_backlog_line_number.append(self._current_line_nr)
         self._iface_write(self._current_line + "\n")
 
         self._current_line_sent = True
-        self._callback("on_line_sent", self._current_line_nr, self._current_line)
+        self._callback("on_line_sent", self._current_line_nr,
+                       self._current_line)
 
     def _rx_buf_can_receive_current_line(self):
         rx_free_bytes = self._rx_buffer_size - sum(self._rx_buffer_fill)
-        required_bytes = len(self._current_line) + 1 # +1 because \n
+        required_bytes = len(self._current_line) + 1  # +1 because \n
         return rx_free_bytes >= required_bytes
 
     def _rx_buffer_fill_pop(self):
@@ -915,9 +915,9 @@ class Gerbil:
                     self._callback("on_alarm", line)
 
                 elif "error" in line:
-                    #self.logger.debug("ERROR")
+                    # self.logger.debug("ERROR")
                     self._error = True
-                    #self.logger.debug("%s: _rx_buffer_backlog at time of error: %s", self.name,  self._rx_buffer_backlog)
+                    # self.logger.debug("%s: _rx_buffer_backlog at time of error: %s", self.name,  self._rx_buffer_backlog)
                     if len(self._rx_buffer_backlog) > 0:
                         problem_command = self._rx_buffer_backlog[0]
                         problem_line = self._rx_buffer_backlog_line_number[0]
@@ -950,7 +950,7 @@ class Gerbil:
                             self._callback("on_settings_downloaded", self.settings)
                     else:
                         self._callback("on_read", line)
-                        #self.logger.info("{}: Could not parse settings: {}".format(self.name, line))
+                        # self.logger.info("{}: Could not parse settings: {}".format(self.name, line))
 
     def _handle_ok(self):
         if self.streaming_complete == False:
@@ -1081,7 +1081,7 @@ class Gerbil:
 
     def is_connected(self):
         if self.connected != True:
-            #self.logger.info("{}: Not yet connected".format(self.name))
+            # self.logger.info("{}: Not yet connected".format(self.name))
             pass
         return self.connected
 
@@ -1107,7 +1107,7 @@ class Gerbil:
             junk = self._queue.get_nowait()
             self.logger.debug("Discarding junk %s", junk)
         except:
-            #self.logger.debug("Queue was empty")
+            # self.logger.debug("Queue was empty")
             pass
 
     def _poll_state(self):
