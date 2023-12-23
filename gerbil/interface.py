@@ -95,7 +95,7 @@ class Interface:
             self.logger.debug("%s: nothing to write", self.name)
 
     def _receiving(self):
-        while self._do_receive == True:
+        while self._do_receive:
             data = self.serialport.read(1)
             waiting = self.serialport.inWaiting()
             data += self.serialport.read(waiting)

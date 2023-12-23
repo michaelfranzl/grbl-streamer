@@ -393,12 +393,12 @@ class Gerbil:
         module, which by itself block-listens (in a thread) to
         asynchronous data sent by the Grbl controller.
         """
-        if path == None or path.strip() == "":
+        if path is None or path.strip() == "":
             return
         else:
             self._ifacepath = path
 
-        if self._iface == None:
+        if self._iface is None:
             self.logger.debug("{}: Setting up interface on {}".format(self.name, self._ifacepath))
             self._iface = Interface("iface_" + self.name, self._ifacepath, baudrate)
             self._iface.start(self._queue)
@@ -420,7 +420,7 @@ class Gerbil:
         connection. For a safe shutdown of Grbl you may also want to
         call `softreset()` before you call this method.
         """
-        if self.is_connected() == False:
+        if not self.is_connected():
             return
 
         self.poll_stop()
@@ -449,7 +449,7 @@ class Gerbil:
         """
         An alias for `softreset()`.
         """
-        if self.is_connected() == False:
+        if not self.is_connected():
             return
         self.softreset()
 
@@ -458,7 +458,7 @@ class Gerbil:
         Immediately sends the feed hold command (exclamation mark)
         to Grbl.
         """
-        if self.is_connected() == False:
+        if not self.is_connected():
             return
         self._iface_write("!")
 
@@ -466,7 +466,7 @@ class Gerbil:
         """
         Immediately send the resume command (tilde) to Grbl.
         """
-        if self.is_connected() == False:
+        if not self.is_connected():
             return
         self._iface_write("~")
 
@@ -490,11 +490,11 @@ class Gerbil:
         string containing 3 data parameters self.cmode, self.cmpos,
         self.cwpos, but only when Grbl's state CHANGES.
         """
-        if self.is_connected() == False:
+        if not self.is_connected():
             return
         self._poll_keep_alive = True
         self._last_cmode = None
-        if self._thread_polling == None:
+        if self._thread_polling is None:
             self._thread_polling = threading.Thread(target=self._poll_state)
             self._thread_polling.start()
             self.logger.debug("{}: Polling thread started".format(self.name))
@@ -506,9 +506,9 @@ class Gerbil:
         """
         Stops polling that has been started with `poll_start()`
         """
-        if self.is_connected() == False:
+        if not self.is_connected():
             return
-        if self._thread_polling != None:
+        if self._thread_polling is not None:
             self._poll_keep_alive = False
             self.logger.debug("{}: Please wait until polling thread has joined...".format(self.name))
             self._thread_polling.join()
@@ -567,7 +567,7 @@ class Gerbil:
         is `False`.
         """
         self._incremental_streaming = onoff
-        if self._incremental_streaming == True:
+        if self._incremental_streaming:
             self._wait_empty_buffer = True
         self.logger.debug("{}: Incremental streaming set to {}".format(self.name, self._incremental_streaming))
 
@@ -654,7 +654,7 @@ class Gerbil:
         @param filename
         A string giving the relative or absolute file path
         """
-        if self.job_finished == False:
+        if not self.job_finished:
             self.logger.warning("{}: Job must be finished before you can load a file".format(self.name))
             return
 
@@ -775,13 +775,13 @@ class Gerbil:
         if self._streaming_src_end_reached:
             return
 
-        if self._streaming_enabled == False:
+        if not self._streaming_enabled:
             return
 
         if self.target == "firmware":
             if self._incremental_streaming:
                 self._set_next_line()
-                if self._streaming_src_end_reached == False:
+                if not self._streaming_src_end_reached:
                     self._send_current_line()
                 else:
                     self._set_job_finished(True)
@@ -790,7 +790,7 @@ class Gerbil:
 
         elif self.target == "simulator":
             buf = []
-            while self._streaming_src_end_reached == False:
+            while not self._streaming_src_end_reached:
                 self._set_next_line(True)
                 if self._current_line_nr < self.buffer_size:
                     buf.append(self._current_line)
@@ -804,10 +804,10 @@ class Gerbil:
 
     def _fill_rx_buffer_until_full(self):
         while True:
-            if self._current_line_sent == True:
+            if self._current_line_sent:
                 self._set_next_line()
 
-            if self._streaming_src_end_reached == False and self._rx_buf_can_receive_current_line():
+            if not self._streaming_src_end_reached and self._rx_buf_can_receive_current_line():
                 self._send_current_line()
             else:
                 break
@@ -825,7 +825,7 @@ class Gerbil:
             self.preprocessor.override_feed()
             self.preprocessor.scale_spindle()
 
-            if send_comments == True:
+            if send_comments:
                 self._current_line = self.preprocessor.line + self.preprocessor.comment
             else:
                 self._current_line = self.preprocessor.line
@@ -871,7 +871,7 @@ class Gerbil:
             ln = self._rx_buffer_backlog_line_number.pop(0) - 1
             self._callback("on_processed_command", ln, processed_command)
 
-        if self._streaming_src_end_reached == True and len(self._rx_buffer_fill) == 0:
+        if self._streaming_src_end_reached and len(self._rx_buffer_fill) == 0:
             self._set_job_finished(True)
             self._set_streaming_complete(True)
 
@@ -881,7 +881,7 @@ class Gerbil:
             num_written = self._iface.write(line)
 
     def _onread(self):
-        while self._iface_read_do == True:
+        while self._iface_read_do:
             line = self._queue.get()
 
             if len(line) > 0:
@@ -905,7 +905,7 @@ class Gerbil:
 
                     if "PRB" in line:
                         # last line
-                        if self.hash_state_requested == True:
+                        if self.hash_state_requested:
                             self._hash_state_sent = False
                             self.hash_state_requested = False
                             self._callback("on_hash_stateupdate", self.settings_hash)
@@ -958,7 +958,7 @@ class Gerbil:
                         # self.logger.info("{}: Could not parse settings: {}".format(self.name, line))
 
     def _handle_ok(self):
-        if self.streaming_complete == False:
+        if not self.streaming_complete:
             self._rx_buffer_fill_pop()
             if not (self._wait_empty_buffer and len(self._rx_buffer_fill) > 0):
                 self._wait_empty_buffer = False
@@ -1036,13 +1036,12 @@ class Gerbil:
             self.cmpos != self._last_cmpos or
             self.cwpos != self._last_cwpos):
                 self._callback("on_stateupdate", self.cmode, self.cmpos, self.cwpos)
-                if self.streaming_complete == True and self.cmode == "Idle":
+                if self.streaming_complete and self.cmode == "Idle":
                     self.update_preprocessor_position()
                     self.gcode_parser_state_requested = True
 
-
         if (self.cmpos != self._last_cmpos):
-            if self.is_standstill == True:
+            if self.is_standstill:
                 self._standstill_watchdog_increment = 0
                 self.is_standstill = False
                 self._callback("on_movement")
@@ -1050,7 +1049,7 @@ class Gerbil:
             # no change in positions
             self._standstill_watchdog_increment += 1
 
-        if self.is_standstill == False and self._standstill_watchdog_increment > 10:
+        if not self.is_standstill and self._standstill_watchdog_increment > 10:
             # machine is not moving
             self.is_standstill = True
             self._callback("on_standstill")
@@ -1085,7 +1084,7 @@ class Gerbil:
         self._callback("on_vars_change", self.preprocessor.vars)
 
     def is_connected(self):
-        if self.connected != True:
+        if not self.connected:
             # self.logger.info("{}: Not yet connected".format(self.name))
             pass
         return self.connected
@@ -1145,7 +1144,7 @@ class Gerbil:
             self.logger.info("{}: $# command not supported in Hold mode.".format(self.name))
             return
 
-        if self._hash_state_sent == False:
+        if not self._hash_state_sent:
             self._iface_write("$#\n")
             self._hash_state_sent = True
 
@@ -1157,7 +1156,7 @@ class Gerbil:
 
     def _set_job_finished(self, a):
         self.job_finished = a
-        if a == True:
+        if a:
             self._callback("on_job_completed")
 
     def _default_callback(self, status, *args):
