@@ -34,6 +34,7 @@ from .callbackloghandler import CallbackLogHandler
 
 from gcode_machine import GcodeMachine
 
+
 class Gerbil:
     """ A universal Grbl CNC firmware interface module for Python3
     providing a convenient high-level API for scripting or integration
@@ -356,7 +357,6 @@ class Gerbil:
         self.preprocessor.cs_offsets = self.settings_hash
         self._callback("on_gcode_parser_stateupdate", self.gps)
 
-
     def setup_logging(self, handler=None):
         """Assign a custom log handler.
 
@@ -386,7 +386,6 @@ class Gerbil:
         self.logger.addHandler(self._loghandler)
         self._loghandler.callback = self._callback
 
-
     def cnect(self, path=None, baudrate=115200):
         """
         Connect to the RS232 port of the Grbl controller.
@@ -414,7 +413,6 @@ class Gerbil:
         self._thread_read_iface.start()
 
         self.softreset()
-
 
     def disconnect(self):
         """
@@ -449,14 +447,12 @@ class Gerbil:
         self._iface.write("\x18") # Ctrl-X
         self.update_preprocessor_position()
 
-
     def abort(self):
         """
         An alias for `softreset()`.
         """
         if self.is_connected() == False: return
         self.softreset()
-
 
     def hold(self):
         """
@@ -466,7 +462,6 @@ class Gerbil:
         if self.is_connected() == False: return
         self._iface_write("!")
 
-
     def resume(self):
         """
         Immediately send the resume command (tilde) to Grbl.
@@ -474,20 +469,17 @@ class Gerbil:
         if self.is_connected() == False: return
         self._iface_write("~")
 
-
     def killalarm(self):
         """
         Immediately send the kill alarm command ($X) to Grbl.
         """
         self._iface_write("$X\n")
 
-
     def homing(self):
         """
         Immediately send the homing command ($H) to Grbl.
         """
         self._iface_write("$H\n")
-
 
     def poll_start(self):
         """
@@ -523,7 +515,6 @@ class Gerbil:
 
         self._thread_polling = None
 
-
     def set_feed_override(self, val):
         """
         Enable or disable the feed override feature.
@@ -536,7 +527,6 @@ class Gerbil:
         """
         self.preprocessor.do_feed_override = val
 
-
     def request_feed(self, requested_feed):
         """
         Override the feed speed. Effecive only when you set `set_feed_override(True)`.
@@ -545,7 +535,6 @@ class Gerbil:
         The feed speed in mm/min.
         """
         self.preprocessor.request_feed = float(requested_feed)
-
 
     @property
     def incremental_streaming(self):
@@ -578,7 +567,6 @@ class Gerbil:
         if self._incremental_streaming == True:
             self._wait_empty_buffer = True
         self.logger.debug("{}: Incremental streaming set to {}".format(self.name, self._incremental_streaming))
-
 
     def send_immediately(self, line):
         """
@@ -624,7 +612,6 @@ class Gerbil:
 
         self._iface_write(self.preprocessor.line + "\n")
 
-
     def stream(self, lines):
         """
         A more convenient alias for `write(lines)` and `job_run()`
@@ -634,7 +621,6 @@ class Gerbil:
         """
         self._load_lines_into_buffer(lines)
         self.job_run()
-
 
     def write(self, lines):
         """
@@ -652,7 +638,6 @@ class Gerbil:
             lines = "\n".join(lines)
 
         self._load_lines_into_buffer(lines)
-
 
     def load_file(self, filename):
         """
@@ -674,7 +659,6 @@ class Gerbil:
 
         with open(filename) as f:
             self._load_lines_into_buffer(f.read())
-
 
     def job_run(self, linenr=None):
         """
@@ -703,14 +687,12 @@ class Gerbil:
         self._set_job_finished(False)
         self._stream()
 
-
     def job_halt(self):
         """
         Stop streaming. Grbl still will continue processing
         all G-Code in its internal serial receive buffer.
         """
         self._streaming_enabled = False
-
 
     def job_new(self):
         """
@@ -744,7 +726,6 @@ class Gerbil:
             self._current_line_nr = linenr
             self._callback("on_line_number_change", self._current_line_nr)
 
-
     def request_settings(self):
         """
         This will send `$$` to Grbl and you will receive a callback with
@@ -752,7 +733,6 @@ class Gerbil:
         of the settings.
         """
         self._iface_write("$$\n")
-
 
     def do_buffer_stash(self):
         """
@@ -774,7 +754,6 @@ class Gerbil:
         self.buffer_size = self.buffer_size_stash
         self.current_line_number = self._current_line_nr_stash
         self._callback("on_bufsize_change", self.buffer_size)
-
 
     def update_preprocessor_position(self):
         # keep preprocessor informed about current working pos
@@ -829,7 +808,6 @@ class Gerbil:
                 self._send_current_line()
             else:
                 break
-
 
     def _set_next_line(self, send_comments=False):
         progress_percent = int(100 * self._current_line_nr / self.buffer_size)
@@ -929,8 +907,6 @@ class Gerbil:
                             self.preprocessor.cs_offsets = self.settings_hash
                         else:
                             self._callback("on_probe", self.settings_hash["PRB"])
-
-
 
                 elif "ALARM" in line:
                     self.cmode = "Alarm" # grbl for some reason doesn't respond to ? polling when alarm due to soft limits
@@ -1069,7 +1045,6 @@ class Gerbil:
             # no change in positions
             self._standstill_watchdog_increment += 1
 
-
         if self.is_standstill == False and self._standstill_watchdog_increment > 10:
             # machine is not moving
             self.is_standstill = True
@@ -1078,7 +1053,6 @@ class Gerbil:
         self._last_cmode = self.cmode
         self._last_cmpos = self.cmpos
         self._last_cwpos = self.cwpos
-
 
     def _load_line_into_buffer(self, line):
         self.preprocessor.set_line(line)
@@ -1183,4 +1157,3 @@ class Gerbil:
 
     def _default_callback(self, status, *args):
         print("GERBIL DEFAULT CALLBACK", status, args)
-
