@@ -93,7 +93,8 @@ class Interface:
 
     def write(self, data):
         """
-        Write `data` to the device node. If data is empty, no write is performed. The number of written characters is returned.
+        Write `data` to the device node. If data is empty, no write is performed.
+        The number of written characters is returned.
         """
         if len(data) > 0:
             num_written = self.serialport.write(bytes(data, "ascii"))

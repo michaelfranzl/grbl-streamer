@@ -62,7 +62,8 @@ class Gerbil:
 
     Callbacks:
 
-    After assigning your own callback function (callback = ...) you will receive the following signals:
+    After assigning your own callback function (callback = ...)
+    you will receive the following signals:
 
     on_boot
     : Emitted whenever Grbl boots (e.g. after a soft reset).
@@ -532,7 +533,8 @@ class Gerbil:
 
     def request_feed(self, requested_feed):
         """
-        Override the feed speed. Effecive only when you set `set_feed_override(True)`.
+        Override the feed speed.
+        Effecive only when you set `set_feed_override(True)`.
 
         @param requested_feed
         The feed speed in mm/min.
@@ -670,7 +672,8 @@ class Gerbil:
 
         @param linenr
         If `linenr` is not specified, start streaming from the current
-        buffer position (`self.current_line_number`). If `linenr` is specified, start streaming from this line.
+        buffer position (`self.current_line_number`).
+        If `linenr` is specified, start streaming from this line.
         """
         if self.buffer_size == 0:
             self.logger.warning("{}: Cannot run job. Nothing in the buffer!".format(self.name))
