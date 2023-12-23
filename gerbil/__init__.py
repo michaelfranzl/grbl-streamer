@@ -341,7 +341,8 @@ class Gerbil:
 
         self._loghandler = None
 
-        self._counter = 0  # general-purpose counter for timing tasks inside of _poll_state
+        # general-purpose counter for timing tasks inside of _poll_state
+        self._counter = 0
 
         self._callback = callback
 
