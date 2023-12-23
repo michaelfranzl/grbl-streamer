@@ -19,7 +19,6 @@ along with pyglpainter. If not, see <https://www.gnu.org/licenses/>.
 """
 
 import serial
-import time
 import threading
 import logging
 
