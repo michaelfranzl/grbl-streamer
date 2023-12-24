@@ -896,7 +896,7 @@ class Gerbil:
                 elif line == "ok":
                     self._handle_ok()
 
-                elif re.match("^\[G[0123] .*", line):
+                elif re.match(r'^\[G[0123] .*', line):
                     self._update_gcode_parser_state(line)
                     self._callback("on_read", line)
 
@@ -904,7 +904,7 @@ class Gerbil:
                     # nothing to do here
                     pass
 
-                elif re.match("^\[...:.*", line):
+                elif re.match(r'^\[...:.*', line):
                     self._update_hash_state(line)
                     self._callback("on_read", line)
 
@@ -946,7 +946,7 @@ class Gerbil:
                     self.gcode_parser_state_requested = True
 
                 else:
-                    m = re.match("\$(.*)=(.*) \((.*)\)", line)
+                    m = re.match(r'\$(.*)=(.*) \((.*)\)', line)
                     if m:
                         key = int(m.group(1))
                         val = m.group(2)
@@ -987,7 +987,7 @@ class Gerbil:
         self.settings_hash[key] = tpl
 
     def _update_gcode_parser_state(self, line):
-        m = re.match("\[G(\d) G(\d\d) G(\d\d) G(\d\d) G(\d\d) G(\d\d) M(\d) M(\d) M(\d) T(\d) F([\d.-]*?) S([\d.-]*?)\]", line)
+        m = re.match(r'\[G(\d) G(\d\d) G(\d\d) G(\d\d) G(\d\d) G(\d\d) M(\d) M(\d) M(\d) T(\d) F([\d.-]*?) S([\d.-]*?)\]', line)
         if m:
             self.gps[0] = m.group(1)  # motionmode
             self.gps[1] = m.group(2)  # current coordinate system
@@ -1008,7 +1008,7 @@ class Gerbil:
             self.logger.error("{}: Could not parse gcode parser report: '{}'".format(self.name, line))
 
     def _update_state(self, line):
-        m = re.match("<(.*?),MPos:(.*?),WPos:(.*?)>", line)
+        m = re.match(r'<(.*?),MPos:(.*?),WPos:(.*?)>', line)
         if m is not None:
             # GRBL v0.9
             self.cmode = m.group(1)
@@ -1019,14 +1019,14 @@ class Gerbil:
         else:
             # GRBL v1.1
             # <Idle|MPos:0.0000,0.0000,0.0000|Bf:15,128|FS:0.0,0|WCO:0.0000,0.0000,0.0000>
-            m = re.match("<(.*?)\|MPos:(.*?)\|", line)
+            m = re.match(r'<(.*?)\|MPos:(.*?)\|', line)
             if m is not None:
                 # machine position reported (adjustable via $10)
                 self.cmode = m.group(1)
                 mpos_parts = m.group(2).split(",")
                 self.cmpos = (float(mpos_parts[0]), float(mpos_parts[1]), float(mpos_parts[2]))
             else:
-                m = re.match("<(.*?)\|WPos:(.*?)\|", line)
+                m = re.match(r'<(.*?)\|WPos:(.*?)\|', line)
                 if m is not None:
                     # work position reported (adjustble via $10)
                     self.cmode = m.group(1)
