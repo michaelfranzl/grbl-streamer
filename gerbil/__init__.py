@@ -227,12 +227,12 @@ class Gerbil:
         # documentation for more info. Will be available shortly after
         # setting `hash_state_requested` to `True`.
         self.settings_hash = {
-            'G54': (-600, -300, 0),
-            'G55': (-400, -300, 0),
-            'G56': (-200, -300, 0),
-            'G57': (-600, -600, 0),
-            'G58': (-400, -600, 0),
-            'G59': (-200, -600, 0),
+            'G54': (0, 0, 0),
+            'G55': (0, 0, 0),
+            'G56': (0, 0, 0),
+            'G57': (0, 0, 0),
+            'G58': (0, 0, 0),
+            'G59': (0, 0, 0),
             'G28': (0, 0, 0),
             'G30': (0, 0, 0),
             'G92': (0, 0, 0),
