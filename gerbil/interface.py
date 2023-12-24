@@ -61,7 +61,11 @@ class Interface:
         """
         self.queue = queue
 
-        self.logger.info("%s: connecting to %s with baudrate %i", self.name, self.path, self.baud)
+        self.logger.info(
+                "%s: connecting to %s with baudrate %i",
+                self.name,
+                self.path,
+                self.baud)
 
         self.serialport = serial.Serial(
                 self.path,
@@ -93,7 +97,8 @@ class Interface:
 
     def write(self, data):
         """
-        Write `data` to the device node. If data is empty, no write is performed.
+        Write `data` to the device node.
+        If data is empty, no write is performed.
         The number of written characters is returned.
         """
         if len(data) > 0:
@@ -113,7 +118,9 @@ class Interface:
         try:
             asci = data.decode("ascii")
         except UnicodeDecodeError:
-            self.logger.info("%s: Received a non-ascii byte. Probably junk. Dropping it.", self.name)
+            self.logger.info(
+                "%s: Received a non-ascii byte. Probably junk. Dropping it.",
+                self.name)
             asci = ""
 
         for i in range(0, len(asci)):

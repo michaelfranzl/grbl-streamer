@@ -605,7 +605,7 @@ class Gerbil:
         if "$#" in line:
             # The PRB response is sent for $# as well as when probing.
             # Regular querying of the hash state needs to be done like this,
-            # otherwise the PRB response would be interpreted as a probe answer.
+            # otherwise the PRB response would be interpreted as a probe answer
             self.hash_state_requested = True
             return
 
@@ -768,7 +768,9 @@ class Gerbil:
 
     def _preprocessor_callback(self, event, *data):
         if event == "on_preprocessor_var_undefined":
-            self.logger.critical("HALTED JOB BECAUSE UNDEFINED VAR {}".format(data[0]))
+            self.logger.critical(
+                "HALTED JOB BECAUSE UNDEFINED VAR {}".format(data[0])
+            )
             self._set_streaming_src_end_reached(True)
             self.job_halt()
         else:
