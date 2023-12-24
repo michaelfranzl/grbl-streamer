@@ -31,6 +31,6 @@ class CallbackLogHandler(logging.StreamHandler):
             #print(self.format(record))
             #self.callback("on_log", self.format(record))
             #self.callback("on_log", record.levelno, record.msg % record.args)
-            self.callback("on_log", record)
+            self.callback('on_log', record)
         else:
             logging.StreamHandler.emit(self, record)

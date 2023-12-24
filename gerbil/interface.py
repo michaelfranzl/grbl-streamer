@@ -47,9 +47,9 @@ class Interface:
         self.path = path
         self.baud = baud
         self.queue = None
-        self.logger = logging.getLogger("gerbil.interface")
+        self.logger = logging.getLogger('gerbil.interface')
 
-        self._buf_receive = ""
+        self._buf_receive = ''
         self._do_receive = False
 
     def start(self, queue):
@@ -62,7 +62,7 @@ class Interface:
         self.queue = queue
 
         self.logger.info(
-                "%s: connecting to %s with baudrate %i",
+                '%s: connecting to %s with baudrate %i',
                 self.name,
                 self.path,
                 self.baud)
@@ -87,10 +87,10 @@ class Interface:
         Close the device node and shut down the reading Thread.
         """
         self._do_receive = False
-        self.logger.info("%s: stop()", self.name)
+        self.logger.info('%s: stop()', self.name)
         self.serial_thread.join()
-        self.logger.info("%s: JOINED thread", self.name)
-        self.logger.info("%s: Closing port", self.name)
+        self.logger.info('%s: JOINED thread', self.name)
+        self.logger.info('%s: Closing port', self.name)
         self.serialport.flushInput()
         self.serialport.flushOutput()
         self.serialport.close()
@@ -102,10 +102,10 @@ class Interface:
         The number of written characters is returned.
         """
         if len(data) > 0:
-            num_written = self.serialport.write(bytes(data, "ascii"))
+            num_written = self.serialport.write(bytes(data, 'ascii'))
             return num_written
         else:
-            self.logger.debug("%s: nothing to write", self.name)
+            self.logger.debug('%s: nothing to write', self.name)
 
     def _receiving(self):
         while self._do_receive:
@@ -116,10 +116,10 @@ class Interface:
 
     def _handle_data(self, data):
         try:
-            asci = data.decode("ascii")
+            asci = data.decode('ascii')
         except UnicodeDecodeError:
             self.logger.info(
-                "%s: Received a non-ascii byte. Probably junk. Dropping it.",
+                '%s: Received a non-ascii byte. Probably junk. Dropping it.',
                 self.name)
             asci = ""
 
