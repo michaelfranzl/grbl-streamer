@@ -1010,6 +1010,7 @@ class Gerbil:
         m = re.match(r'<(.*?),MPos:(.*?),WPos:(.*?)>', line)
         if m is not None:
             # GRBL v0.9
+            # <Idle,MPos:0.000,3.000,0.000,WPos:0.000,3.000,0.000>
             self.cmode = m.group(1)
             mpos_parts = m.group(2).split(',')
             wpos_parts = m.group(3).split(',')
@@ -1020,14 +1021,14 @@ class Gerbil:
             # <Idle|MPos:0.0000,0.0000,0.0000|Bf:15,128|FS:0.0,0|WCO:0.0000,0.0000,0.0000>
             m = re.match(r'<(.*?)\|MPos:(.*?)\|', line)
             if m is not None:
-                # machine position reported (adjustable via $10)
+                # machine position reported (when $10=1)
                 self.cmode = m.group(1)
                 mpos_parts = m.group(2).split(',')
                 self.cmpos = (float(mpos_parts[0]), float(mpos_parts[1]), float(mpos_parts[2]))
             else:
                 m = re.match(r'<(.*?)\|WPos:(.*?)\|', line)
                 if m is not None:
-                    # work position reported (adjustble via $10)
+                    # work position reported (when $10=0)
                     self.cmode = m.group(1)
                     wpos_parts = m.group(2).split(',')
                     self.cwpos = (float(wpos_parts[0]), float(wpos_parts[1]), float(wpos_parts[2]))
