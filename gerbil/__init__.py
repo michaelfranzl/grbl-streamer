@@ -427,6 +427,7 @@ class Gerbil:
 
         self.logger.debug('{}: Please wait until reading thread has joined...'.format(self.name))
         self._iface_read_do = False
+        # The thread will not join without putting a last queue message:
         self._queue.put("dummy_msg_for_joining_thread")
         self._thread_read_iface.join()
         self.logger.debug('{}: Reading thread successfully joined.'.format(self.name))
