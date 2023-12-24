@@ -919,7 +919,9 @@ class Gerbil:
                             self._callback("on_probe", self.settings_hash["PRB"])
 
                 elif "ALARM" in line:
-                    self.cmode = "Alarm" # grbl for some reason doesn't respond to ? polling when alarm due to soft limits
+                    # grbl for some reason doesn't respond to ? polling
+                    # when there is an alarm due to soft limits
+                    self.cmode = "Alarm"
                     self._callback("on_stateupdate", self.cmode, self.cmpos, self.cwpos)
                     self._callback("on_read", line)
                     self._callback("on_alarm", line)
