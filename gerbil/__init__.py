@@ -371,14 +371,10 @@ class Gerbil:
         An instance of a subclass inheriting from `logging.StreamHandler`
         """
 
-        if handler:
-            self._loghandler = handler
-        else:
-            # The default log handler shipped with this module will call
-            # self._callback() with first parameter "on_log" and second
-            # parameter with the logged string.
-            lh = CallbackLogHandler()
-            self._loghandler = lh
+        # The default log handler shipped with this module will call
+        # self._callback() with first parameter "on_log" and second
+        # parameter with the logged string.
+        self._loghandler = handler if handler else CallbackLogHandler()
 
         # attach the selected log handler
         self.logger.addHandler(self._loghandler)
