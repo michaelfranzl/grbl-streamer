@@ -374,11 +374,14 @@ class Gerbil:
         # The default log handler shipped with this module will call
         # self._callback() with first parameter "on_log" and second
         # parameter with the logged string.
-        self._loghandler = handler if handler else CallbackLogHandler()
+        if handler is not None:
+            self._loghandler = handler
+        else:
+            lh = CallbackLogHandler()
+            lh.callback = self._callback
+            self._loghandler = lh
 
-        # attach the selected log handler
         self.logger.addHandler(self._loghandler)
-        self._loghandler.callback = self._callback
 
     def cnect(self, path=None, baudrate=115200):
         """
