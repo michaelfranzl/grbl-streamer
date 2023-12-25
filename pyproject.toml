@@ -16,6 +16,8 @@ keywords = ["cnc", "gcode", "grbl"]
 classifiers = [
   "Development Status :: 5 - Production/Stable",
 ]
+
+[project.urls]
 repository = "https://github.com/michaelfranzl/grbl-streamer"
 
 [build-system]
