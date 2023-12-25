@@ -2,7 +2,7 @@ import unittest
 import time
 import logging
 
-from gerbil import Gerbil
+from grbl_streamer import GrblStreamer
 
 formatter = logging.Formatter()
 
@@ -36,7 +36,7 @@ class Test(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.grbl = Gerbil(cls.callback)
+        cls.grbl = GrblStreamer(cls.callback)
         cls.grbl.setup_logging()
         # cls.grbl.setup_logging(logging.StreamHandler())
         cls.grbl.cnect('/dev/ttyUSB0', 115200)

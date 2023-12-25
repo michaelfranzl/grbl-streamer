@@ -47,7 +47,7 @@ class Interface:
         self.path = path
         self.baud = baud
         self.queue = None
-        self.logger = logging.getLogger('gerbil.interface')
+        self.logger = logging.getLogger('GrblStreamer.interface')
 
         self._buf_receive = ''
         self._do_receive = False

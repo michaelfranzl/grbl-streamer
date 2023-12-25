@@ -1,5 +1,5 @@
 [project]
-name = "gerbil"
+name = "grbl-streamer"
 authors = [
   {name = "Michael Franzl", email = "public.michael@franzl.name"},
 ]

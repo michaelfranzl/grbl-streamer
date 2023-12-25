@@ -1,11 +1,9 @@
-# Gerbil
+# GrblStreamer
 
 Universal interface module written in Python 3 for the [grbl](https://github.com/grbl/grbl) CNC firmware.
 It provides a convenient high-level API for scripting or integration into parent applications (e.g. GUIs).
 
-There are a number of streaming applications available for the grbl CNC controller, but none of them seem to be an universal, re-usable standard Python module. Gerbil attempts to fill that gap.
-
-"Gerbil" is a name of a cute desert rodent. It is chosen due to its similarity to the name "grbl".
+There are a number of streaming applications available for the grbl CNC controller, but none of them seem to be an universal, re-usable standard Python module. GrblStreamer attempts to fill that gap.
 
 
 ## Features
@@ -19,7 +17,7 @@ There are a number of streaming applications available for the grbl CNC controll
    * grbl's booting
    * grbl's settings updates
    * grbl's g-code parser state updates
-   * gerbil's log lines
+   * log lines
 * keeps a copy of grbl's state for immediate inspection
 * Non-blocking streaming of g-code
 * Two streaming modes:
@@ -44,13 +42,13 @@ The following features are also available, coming from my library [gcode-machine
 
 ## Integration example
 
-See Gerbil integrated with its full feature set in a graphical user interface based on Python 3 with Qt5 bindings: [gerbil_gui](https://github.com/michaelfranzl/gerbil_gui).
+See GrblStreamer integrated with its full feature set in a graphical user interface based on Python 3 with Qt5 bindings: https://github.com/michaelfranzl/gerbil_gui.
 
 
 ## Installation
 
 ```sh
-pip install gerbil
+pip install grbl-streamer
 ```
 
 ## Documentation
@@ -61,10 +59,10 @@ The module is only about 1300 lines of code, which is extensively documented.
 ## Getting started
 
 ```python
-from gerbil import Gerbil
+from grbl_streamer import GrblStreamer
 ```
 
-Define a callback function that Gerbil will call asynchronously whenever some event happens.
+Define a callback function that GrblStreamer will call asynchronously whenever some event happens.
 The following example function does nothing else than logging to standard output.
 In a real GUI application, you would update numbers, sliders etc. from this method.
 
@@ -78,10 +76,10 @@ def my_callback(eventstring, *data):
 
 Here, for just one example, is what above function `my_callback` will print out at this point:
 
-Instantiate the Gerbil class:
+Instantiate the GrblStreamer class:
 
 ```python
-grbl = Gerbil(my_callback)
+grbl = GrblStreamer(my_callback)
 grbl.setup_logging()
 ```
 
@@ -137,7 +135,7 @@ We also can request the settings (grbl's `$$` command), the result will be a dic
 grbl.request_settings()
 ```
 
-Gerbil supports dynamic feed override. You could have a slider in your GUI controlling the milling speed of your machine as it runs:
+GrblStreamer supports dynamic feed override. You could have a slider in your GUI controlling the milling speed of your machine as it runs:
 
 ```python
 grbl.set_feed_override(True)

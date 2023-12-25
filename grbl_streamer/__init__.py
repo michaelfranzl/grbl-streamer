@@ -33,19 +33,16 @@ from .callbackloghandler import CallbackLogHandler
 from gcode_machine import GcodeMachine
 
 
-class Gerbil:
+class GrblStreamer:
     """ A universal Grbl CNC firmware interface module for Python3
     providing a convenient high-level API for scripting or integration
     into parent applications like GUI's.
 
     There are a number of streaming applications available for the Grbl
     CNC controller, but none of them seem to be an universal, re-usable
-    standard Python module. Gerbil attempts to fill that gap.
+    standard Python module. GrblStreamer attempts to fill that gap.
 
     See README for usage examples.
-
-    Gerbil is a name of a cute desert rodent. We chose the name due to
-    its similarity to the name "Grbl".
 
     Features:
 
@@ -129,7 +126,7 @@ class Gerbil:
     : 1 argument: list of the state variables
 
     on_simulation_finished
-    : Emitted when Gerbil's target is set to "simulator" and the job is executed.
+    : Emitted when GrblStreamer's target is set to "simulator" and the job is executed.
     : 1 argument: list of all G-Code commands that would have been sent to Grbl
 
     on_vars_change
@@ -258,7 +255,7 @@ class Gerbil:
         # The logger used by this class. The default is Python's own
         # logger module. Use `setup_logging()` to attach custom
         # log handlers.
-        self.logger = logging.getLogger('gerbil')
+        self.logger = logging.getLogger('GrblStreamer')
         self.logger.setLevel(logging.DEBUG)
         self.logger.propagate = False
 
@@ -358,7 +355,7 @@ class Gerbil:
     def setup_logging(self, handler=None):
         """Assign a custom log handler.
 
-        Gerbil can be used in both console applications as well as
+        GrblStreamer can be used in both console applications as well as
         integrated in other projects like GUI's. Therefore, logging to
         stdout is not always useful. You can pass a custom log message
         handler to this method. If no handler is passed in, the default
@@ -1172,4 +1169,4 @@ class Gerbil:
             self._callback('on_job_completed')
 
     def _default_callback(self, status, *args):
-        print('GERBIL DEFAULT CALLBACK', status, args)
+        print('DEFAULT CALLBACK', status, args)
