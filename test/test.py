@@ -1,8 +1,10 @@
 import unittest
 import time
+import logging
 
 from gerbil import Gerbil
 
+formatter = logging.Formatter()
 
 # Run the tests against a real grbl on /dev/ttyUSB0 with 115200 baud.
 # Both of the two main grbl variants should work:
@@ -24,14 +26,19 @@ class Test(unittest.TestCase):
 
     @classmethod
     def callback(cls, event, *args):
-        match event:
-            case 'on_stateupdate':
-                cls.cmode = args[0]
-                cls.cmpos = args[1]
+        if event == 'on_stateupdate':
+            cls.cmode = args[0]
+            cls.cmpos = args[1]
+
+        data = formatter.format(args[0]) if event == 'on_log' else args
+        print('{}: {}'.format(event.rjust(30, ' '), data))
+
 
     @classmethod
     def setUpClass(cls):
         cls.grbl = Gerbil(cls.callback)
+        cls.grbl.setup_logging()
+        # cls.grbl.setup_logging(logging.StreamHandler())
         cls.grbl.cnect('/dev/ttyUSB0', 115200)
         time.sleep(3)  # TODO: Make this more robust
         cls.grbl.poll_start()
