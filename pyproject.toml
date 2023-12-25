@@ -1,15 +1,29 @@
 [project]
 name = "gerbil"
-version = "0.0.1"
-description = "Universal and reusable Grbl CNC firmware interface module for Python3"
-readme = "README.rst"
-requires-python = ">=3.9"
+authors = [
+  {name = "Michael Franzl", email = "public.michael@franzl.name"},
+]
+version = "1.0.0"
+description = "Universal interface module written in Python 3 for the grbl CNC firmware"
+readme = "README.md"
+requires-python = ">=3.5"
 dependencies = [
-    "pyserial",
-    "gcode_machine",
+  "gcode-machine ~= 1.0",
+  "pyserial ~= 3.5",
 ]
 license = {file = "COPYING"}
+keywords = ["cnc", "gcode", "grbl"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+]
 
-[tool.setuptools]
-packages = ["gerbil"]
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
+[tool.hatch.build]
+exclude = [
+  "Makefile",
+  ".*",
+  "test",
+]
