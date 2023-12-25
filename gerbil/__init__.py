@@ -684,8 +684,6 @@ class Gerbil:
 
         self.travel_dist_current = {}
 
-        # self.preprocessor.current_feed = None
-
         self._set_streaming_src_end_reached(False)
         self._set_streaming_complete(False)
         self._streaming_enabled = True
