@@ -259,7 +259,7 @@ class Gerbil:
         # logger module. Use `setup_logging()` to attach custom
         # log handlers.
         self.logger = logging.getLogger('gerbil')
-        self.logger.setLevel(5)
+        self.logger.setLevel(logging.DEBUG)
         self.logger.propagate = False
 
         # @var target
