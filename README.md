@@ -1,6 +1,6 @@
 # GrblStreamer
 
-Universal interface module written in Python 3 for the [grbl](https://github.com/grbl/grbl) CNC firmware.
+Universal interface module for the [grbl](https://github.com/grbl/grbl) CNC firmware, implemented as a Python 3 class.
 It provides a convenient high-level API for scripting or integration into parent applications (e.g. GUIs).
 
 There are a number of streaming applications available for the grbl CNC controller, but none of them seem to be an universal, re-usable standard Python module. GrblStreamer attempts to fill that gap.
