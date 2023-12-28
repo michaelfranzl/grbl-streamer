@@ -3,7 +3,7 @@ name = "grbl-streamer"
 authors = [
   {name = "Michael Franzl", email = "public.michael@franzl.name"},
 ]
-version = "1.0.0"
+version = "1.0.3"
 description = "Universal interface module written in Python 3 for the grbl CNC firmware"
 readme = "README.md"
 requires-python = ">=3.5"
