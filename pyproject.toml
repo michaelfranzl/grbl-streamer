@@ -8,7 +8,7 @@ dependencies = [
     "pyserial",
     "gcode_machine",
 ]
-license = {file = "LICENSE"}
+license = {file = "COPYING"}
 
 [tool.setuptools]
 packages = ["gerbil"]
