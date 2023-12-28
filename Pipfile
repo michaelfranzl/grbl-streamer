@@ -4,10 +4,12 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-gcode-machine = "*"
-pyserial = "*"
+gcode-machine = "~=1.0"
+pyserial = "~=3.5"
 
 [dev-packages]
+build = "*"
+twine = "*"
 
 [requires]
 python_version = "3.12"

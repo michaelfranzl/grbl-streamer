@@ -273,13 +273,12 @@ Dependencies are managed using `pipenv`:
 
 ```sh
 pip install pipenv --user
-pipenv install
+pipenv install --dev
 ```
 
 
 ### Building
 
 ```sh
-pipenv run make build_deps
 pipenv run make dist
 ```
