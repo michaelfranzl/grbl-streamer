@@ -318,7 +318,6 @@ class GrblStreamer:
         self._streaming_enabled = True
         self._error = False
         self._incremental_streaming = False
-        self._hash_state_sent = False
 
         self.buffer = []
         self.buffer_size = 0
@@ -906,13 +905,9 @@ class GrblStreamer:
 
                     if 'PRB' in line:
                         # last line
-                        if self.hash_state_requested:
-                            self._hash_state_sent = False
-                            self.hash_state_requested = False
-                            self._callback('on_hash_stateupdate', self.settings_hash)
-                            self.preprocessor.cs_offsets = self.settings_hash
-                        else:
-                            self._callback('on_probe', self.settings_hash['PRB'])
+                        self._callback('on_hash_stateupdate', self.settings_hash)
+                        self.preprocessor.cs_offsets = self.settings_hash
+                        self._callback('on_probe', self.settings_hash['PRB'])
 
                 elif 'ALARM' in line:
                     # grbl for some reason doesn't respond to ? polling
@@ -1130,6 +1125,7 @@ class GrblStreamer:
 
             if self.hash_state_requested:
                 self.get_hash_state()
+                self.hash_state_requested = False
 
             elif self.gcode_parser_state_requested:
                 self.get_gcode_parser_state()
@@ -1150,13 +1146,10 @@ class GrblStreamer:
 
     def get_hash_state(self):
         if self.cmode == 'Hold':
-            self.hash_state_requested = False
             self.logger.info('{}: $# command not supported in Hold mode.'.format(self.name))
             return
 
-        if not self._hash_state_sent:
-            self._iface_write('$#\n')
-            self._hash_state_sent = True
+        self._iface_write('$#\n')
 
     def _set_streaming_src_end_reached(self, a):
         self._streaming_src_end_reached = a
