@@ -48,6 +48,7 @@ class Test(unittest.TestCase):
         cls.grbl.disconnect()
 
     def test(self):
+        Test.grbl.write('G59')  # use any coordinate system that is in the machine origin
         Test.grbl.write('G0 Y3')
         Test.grbl.job_run()
         time.sleep(3)  # TODO: Make this more robust
