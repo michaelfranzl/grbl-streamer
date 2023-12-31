@@ -24,7 +24,8 @@ import logging
 
 
 class Interface:
-    """Implements opening, closing, writing and threaded reading from the serial port. Read data are put into a Thread Queue.
+    """Implements opening, closing, writing and threaded reading
+    from the serial port. Read data are put into a Thread Queue.
     """
 
     def __init__(self, name, path, baud=115200):
