@@ -631,21 +631,12 @@ class GrblStreamer:
     def load_file(self, filename):
         """
         Pass a filename to this function to load its contents into the
-        buffer. This only works when Grbl is Idle and the previous job
-        has completed. The previous buffer will be cleared. After this
-        function has completed, the buffer's contents will be identical
-        to the file content. Job is not started automatically.
-        Call `job_run` to start the job.
+        buffer.
+        A job is not started automatically. Call `job_run` to start the job.
 
         @param filename
         A string giving the relative or absolute file path
         """
-        if not self.job_finished:
-            self.logger.warning('{}: Job must be finished before you can load a file'.format(self.name))
-            return
-
-        self.job_new()
-
         with open(filename) as f:
             self._load_lines_into_buffer(f.read())
 
