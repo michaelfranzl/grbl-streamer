@@ -506,13 +506,14 @@ class GrblStreamer:
         """
         if not self.is_connected():
             return
+
         if self._thread_polling is not None:
             self._poll_keep_alive = False
             self.logger.debug('{}: Please wait until polling thread has joined...'.format(self.name))
             self._thread_polling.join()
             self.logger.debug('{}: Polling thread has successfully  joined...'.format(self.name))
         else:
-            self.logger.debug('{}: Cannot start a polling thread. Another one is already running.'.format(self.name))
+            self.logger.debug('{}: Cannot stop polling thread because none running.'.format(self.name))
 
         self._thread_polling = None
 
@@ -543,7 +544,7 @@ class GrblStreamer:
         return self._incremental_streaming
 
     @incremental_streaming.setter
-    def incremental_streaming(self, onoff):
+    def incremental_streaming(self, value):
         """
         Incremental streaming means that a new command is sent to Grbl
         only after Grbl has responded with 'ok' to the last sent
@@ -565,7 +566,7 @@ class GrblStreamer:
         use non-incremental streaming. The default on module startup
         is `False`.
         """
-        self._incremental_streaming = onoff
+        self._incremental_streaming = value
         if self._incremental_streaming:
             self._wait_empty_buffer = True
         self.logger.debug('{}: Incremental streaming set to {}'.format(self.name, self._incremental_streaming))

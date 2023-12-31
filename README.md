@@ -22,7 +22,7 @@ There are a number of streaming applications available for the grbl CNC controll
 * Non-blocking streaming of g-code
 * Two streaming modes:
    * Incremental
-   * fast (keep grbl's receive buffer as full as possibly by keeping track of submitted characters)
+   * fast (keep grbl's receive buffer as full as possible by keeping track of submitted characters)
 * Streaming from files or Python lists
 * Keeps track of the fill percentage of grbl's receive buffer
 * Requesting of grbl's settings
