@@ -48,6 +48,7 @@ class Test(unittest.TestCase):
         cls.grbl.disconnect()
 
     def test(self):
-        Test.grbl.stream('G0 Y3\n')
+        Test.grbl.write('G0 Y3')
+        Test.grbl.job_run()
         time.sleep(3)  # TODO: Make this more robust
         self.assertEqual(Test.cmpos, (0, 3, 0))

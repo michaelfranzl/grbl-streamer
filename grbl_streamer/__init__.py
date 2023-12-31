@@ -614,16 +614,6 @@ class GrblStreamer:
 
         self._iface_write(self.preprocessor.line + '\n')
 
-    def stream(self, lines):
-        """
-        A more convenient alias for `write(lines)` and `job_run()`
-
-        @param lines
-        A string of G-Code commands. Each command is \n separated.
-        """
-        self._load_lines_into_buffer(lines)
-        self.job_run()
-
     def write(self, lines):
         """
         G-Code command strings passed to this function will be appended
