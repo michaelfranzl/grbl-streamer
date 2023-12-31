@@ -624,11 +624,8 @@ class GrblStreamer:
         of G-Code, even while a job is running.
 
         @param lines
-        A string of G-Code commands. Each command is \n separated.
+        A list or newline-separated string of G-Code commands.
         """
-        if type(lines) is list:
-            lines = "\n".join(lines)
-
         self._load_lines_into_buffer(lines)
 
     def load_file(self, filename):
@@ -1071,10 +1068,13 @@ class GrblStreamer:
 
             self.preprocessor.done()
 
-    def _load_lines_into_buffer(self, string):
-        lines = string.split('\n')
+    def _load_lines_into_buffer(self, lines):
+        if type(lines) is str:
+            lines = lines.split('\n')
+
         for line in lines:
             self._load_line_into_buffer(line)
+
         self._callback('on_bufsize_change', self.buffer_size)
         self._callback('on_vars_change', self.preprocessor.vars)
 
