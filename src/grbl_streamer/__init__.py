@@ -878,14 +878,15 @@ class GrblStreamer:
                     pass
 
                 elif re.match(r'^\[...:.*', line):
-                    self._update_hash_state(line)
                     self._callback('on_read', line)
+                    if "'$H'|'$X' to unlock" not in line: #[MSG:'$H'|'$X' to unlock]
+                        self._update_hash_state(line)
 
-                    if 'PRB' in line:
-                        # last line
-                        self._callback('on_hash_stateupdate', self.settings_hash)
-                        self.preprocessor.cs_offsets = self.settings_hash
-                        self._callback('on_probe', self.settings_hash['PRB'])
+                        if 'PRB' in line:
+                            # last line
+                            self._callback('on_hash_stateupdate', self.settings_hash)
+                            self.preprocessor.cs_offsets = self.settings_hash
+                            self._callback('on_probe', self.settings_hash['PRB'])
 
                 elif 'ALARM' in line:
                     # grbl for some reason doesn't respond to ? polling
