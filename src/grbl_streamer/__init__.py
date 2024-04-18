@@ -66,6 +66,10 @@ class GrblStreamer:
     : Emitted whenever Grbl boots (e.g. after a soft reset).
     : No arguments.
 
+    on_read
+    : Emitted whenever a line is read by GrblStreamer
+    : 1 argument: line
+
     on_disconnected
     : Emitted whenever the serial port has been closed.
     : No arguments
@@ -873,20 +877,19 @@ class GrblStreamer:
                     self._update_gcode_parser_state(line)
                     self._callback("on_read", line)
 
-                elif line == '[MSG:Caution: Unlocked]':
+                elif line.startswith('[MSG:'):
                     # nothing to do here
                     pass
 
                 elif re.match(r'^\[...:.*', line):
                     self._callback('on_read', line)
-                    if "'$H'|'$X' to unlock" not in line: #[MSG:'$H'|'$X' to unlock]
-                        self._update_hash_state(line)
+                    self._update_hash_state(line)
 
-                        if 'PRB' in line:
-                            # last line
-                            self._callback('on_hash_stateupdate', self.settings_hash)
-                            self.preprocessor.cs_offsets = self.settings_hash
-                            self._callback('on_probe', self.settings_hash['PRB'])
+                    if 'PRB' in line:
+                        # last line
+                        self._callback('on_hash_stateupdate', self.settings_hash)
+                        self.preprocessor.cs_offsets = self.settings_hash
+                        self._callback('on_probe', self.settings_hash['PRB'])
 
                 elif 'ALARM' in line:
                     # grbl for some reason doesn't respond to ? polling
