@@ -1,7 +1,7 @@
 [project]
 name = "grbl-streamer"
 authors = [
-  {name = "Michael Franzl", email = "public.michael@franzl.name"},
+  {name = "Michael Franzl", email = "michael@franzl.name"},
 ]
 version = "2.0.1"
 description = "Universal interface module written in Python 3 for the grbl CNC firmware"
