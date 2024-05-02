@@ -6,7 +6,7 @@ test:
 clean:
 	rm -rf dist
 
-dist: test
+dist:
 	python -m build --sdist .
 
 .PHONY: deploy_test
